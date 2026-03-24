@@ -1,0 +1,25 @@
+{
+  "name": "consulta-api-sri",
+  "version": "1.0.0",
+  "description": "API para consulta masiva de comprobantes electrónicos del SRI Ecuador",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "keywords": [
+    "sri",
+    "ecuador",
+    "comprobantes",
+    "electronicos"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "node-fetch": "^2.7.0",
+    "xml2js": "^0.6.2"
+  }
+}
