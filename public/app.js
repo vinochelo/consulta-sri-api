@@ -37,7 +37,7 @@ function initTheme() {
   const iconMoon = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>';
   const iconSun = '<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>';
 
-  const savedTheme = localStorage.getItem('theme') || 'dark';
+  const savedTheme = localStorage.getItem('theme') || 'light';
   if (savedTheme === 'light') {
     root.setAttribute('data-theme', 'light');
     if (themeIcon) themeIcon.innerHTML = iconSun;
@@ -360,6 +360,11 @@ function procesarArchivoExcel(archivo) {
           (filasOmitidas > 0 ? ` (${filasOmitidas} filas omitidas)` : ''),
           'success'
         );
+        
+        // Iniciar consulta automáticamente
+        setTimeout(() => {
+          realizarConsultaMasiva();
+        }, 300);
       } else {
         mostrarNotificacion(
           `Se encontró la columna "${nombreColumna}" pero no contiene claves válidas de 49 dígitos`,
@@ -778,28 +783,14 @@ async function exportarExcel() {
     const excelBuffer = XLSX.write(libro, { bookType: 'xlsx', type: 'array' });
     const blob = new Blob([excelBuffer], { type: 'application/octet-stream' });
     
-    if (window.showSaveFilePicker) {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: nombreArchivo,
-        types: [{
-          description: 'Archivo Excel',
-          accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
-        }]
-      });
-      const writable = await handle.createWritable();
-      await writable.write(blob);
-      await writable.close();
-      mostrarNotificacion('Archivo Excel guardado en la ubicación elegida', 'success');
-    } else {
-      // Descarga directa (fallback para firefox, safari, etc)
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = nombreArchivo;
-      a.click();
-      URL.revokeObjectURL(url);
-      mostrarNotificacion('Archivo Excel descargado', 'success');
-    }
+    // Descarga directa automática (sin diálogo de confirmación 'Save As')
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nombreArchivo;
+    a.click();
+    URL.revokeObjectURL(url);
+    mostrarNotificacion('Archivo Excel descargado de forma automática', 'success');
   } catch (err) {
     if (err.name !== 'AbortError') {
       mostrarNotificacion('Error al exportar: ' + err.message, 'error');
@@ -874,7 +865,7 @@ function reproducirSonidoExito() {
 
     // Rampa de volumen para que no suene brusco
     ganancia.gain.setValueAtTime(0, ctx.currentTime);
-    ganancia.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.1);
+    ganancia.gain.linearRampToValueAtTime(0.8, ctx.currentTime + 0.1); // Subido de 0.3 a 0.8
     ganancia.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.2);
 
     osc1.start(ctx.currentTime);

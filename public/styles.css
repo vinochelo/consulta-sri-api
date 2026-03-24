@@ -107,19 +107,26 @@ select option{background-color:var(--bg-primary);color:var(--text-primary)}
 .btn-primary:active:not(:disabled){transform:translateY(0)}
 .btn-secondary{background:var(--bg-glass);border:1px solid var(--border-color);color:var(--text-primary)}
 .btn-secondary:hover:not(:disabled){border-color:rgba(255,255,255,0.15);background:rgba(255,255,255,0.05)}
+.btn-success{background:linear-gradient(135deg,#10b981,#059669);color:white;box-shadow:0 4px 15px rgba(16,185,129,0.3)}
+.btn-success:hover:not(:disabled){box-shadow:0 6px 25px rgba(16,185,129,0.45);transform:translateY(-1px)}
+.btn-success:active:not(:disabled){transform:translateY(0)}
+.btn-danger{background:var(--accent-red-bg);color:var(--accent-red);border:1px solid rgba(248,113,113,0.3);box-shadow:none}
+.btn-danger:hover:not(:disabled){background:rgba(248,113,113,0.2);border-color:var(--accent-red);transform:translateY(-1px)}
+.btn-danger:active:not(:disabled){transform:translateY(0)}
 .btn-ghost{background:transparent;color:var(--text-secondary);padding:6px 12px}
 .btn-ghost:hover{color:var(--text-primary);background:rgba(255,255,255,0.04)}
 .btn-lg{padding:14px 28px;font-size:0.95rem;width:100%}
 .btn-sm{padding:6px 14px;font-size:0.78rem}
 
-.progreso-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;font-size:0.88rem}
-#progresoTexto{font-weight:500}
-#progresoContador{color:var(--text-secondary);font-variant-numeric:tabular-nums}
-.progreso-barra{height:8px;background:rgba(255,255,255,0.05);border-radius:4px;overflow:hidden}
-.progreso-fill{height:100%;background:linear-gradient(90deg,var(--accent-blue),#818cf8);border-radius:4px;transition:width 300ms ease-out;position:relative}
-.progreso-fill::after{content:'';position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.2),transparent);animation:shimmer 2s infinite}
+.progreso-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;font-size:1rem}
+#progresoTexto{font-weight:600;color:var(--text-primary)}
+#progresoContador{color:var(--accent-blue);font-weight:700;font-variant-numeric:tabular-nums;background:var(--bg-glass);padding:4px 10px;border-radius:var(--radius-sm);border:1px solid var(--border-color)}
+.progreso-barra{height:22px;background:var(--bg-glass);border-radius:12px;overflow:hidden;border:1px solid var(--border-color);box-shadow:inset 0 2px 4px rgba(0,0,0,0.05)}
+.progreso-fill{height:100%;background:linear-gradient(90deg,var(--accent-blue),#818cf8,var(--accent-blue));background-size:200% 100%;border-radius:12px;transition:width 300ms ease-out;position:relative;animation:barGlow 2s linear infinite;box-shadow:0 0 15px rgba(99,132,255,0.4)}
+.progreso-fill::after{content:'';position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.3),transparent);animation:shimmer 1.5s infinite}
 @keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
-.progreso-stats{margin-top:10px;font-size:0.78rem;color:var(--text-muted)}
+@keyframes barGlow{to{background-position:200% 0}}
+.progreso-stats{margin-top:14px;font-size:0.85rem;color:var(--text-muted);font-weight:500}
 
 .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;animation:fadeInUp 0.4s ease-out}
 .stat-card{padding:20px;border-radius:var(--radius-md);border:1px solid var(--border-color);text-align:center;transition:var(--transition-normal)}
