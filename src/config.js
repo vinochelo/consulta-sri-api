@@ -17,7 +17,7 @@ const config = {
   port: parseInt(process.env.PORT) || 3000,
   sriEnv: process.env.SRI_ENV || 'produccion',
   maxConcurrent: parseInt(process.env.MAX_CONCURRENT) || 10,
-  delayMs: parseInt(process.env.DELAY_MS) || 200,
+  delayMs: parseInt(process.env.DELAY_MS) || 0,
   timeout: 30000, // 30 segundos timeout por petición SOAP
 };
 
