@@ -13,7 +13,7 @@ let filasOmitidas = 0;
 let nombreArchivoExcel = '';
 
 // Tamaño de cada lote enviado al servidor
-const TAMANO_LOTE = 50;
+const TAMANO_LOTE = 100;
 
 // ─── Inicialización ──────────────────────────────────────────
 
