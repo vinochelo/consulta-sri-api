@@ -14,6 +14,7 @@ let nombreArchivoExcel = '';
 
 // Tamaño de cada lote enviado al servidor
 const TAMANO_LOTE = 100;
+const CONEXIONES_SIMULTANEAS = 2; // Cantidad de lotes en paralelo
 
 // ─── Inicialización ──────────────────────────────────────────
 
@@ -508,28 +509,22 @@ async function realizarConsultaMasiva() {
   };
 
   try {
-    while (clavesEnCola.length > 0) {
-      if (consultaCancelada) {
-        progresoTexto.textContent = 'Consulta cancelada por el usuario.';
-        break;
-      }
-
-      const loteActualObj = clavesEnCola.slice(0, TAMANO_LOTE);
-      clavesEnCola = clavesEnCola.slice(TAMANO_LOTE);
-      const loteClavesStr = loteActualObj.map(obj => obj.clave);
+  const ejecutarTrabajador = async (workerId) => {
+    while (clavesEnCola.length > 0 && !consultaCancelada) {
+      // Tomar lote de forma segura
+      const loteActualObj = clavesEnCola.splice(0, TAMANO_LOTE);
+      if (loteActualObj.length === 0) break;
       
+      const loteClavesStr = loteActualObj.map(obj => obj.clave);
       lotesProcesados++;
 
       const numReintento = loteActualObj[0].intentos;
       const msjReintento = numReintento > 0 ? ` (Reintento ${numReintento})` : '';
-      progresoTexto.textContent = `Procesando lote de ${loteClavesStr.length} claves${msjReintento}... Quedan ${clavesEnCola.length} en cola.`;
+      const msjWorker = CONEXIONES_SIMULTANEAS > 1 ? `[W${workerId}] ` : '';
       
-      progresoStats.innerHTML = `
-        <span style="color:var(--accent-green)">✓ ${stats.autorizados} autorizados</span> · 
-        <span style="color:var(--accent-orange)">✗ ${stats.rechazados} rechazados</span> · 
-        <span style="color:var(--accent-red)">⚠ ${stats.errores} errores</span> · 
-        Tiempo: ${((Date.now() - inicioTiempo) / 1000).toFixed(0)}s
-      `;
+      progresoTexto.textContent = `${msjWorker}Procesando ${loteClavesStr.length} claves${msjReintento}... ${clavesEnCola.length} en cola.`;
+      
+      actualizarProgresoUI();
 
       try {
         const res = await fetch(`${API_BASE}/consulta/masiva`, {
@@ -550,7 +545,6 @@ async function realizarConsultaMasiva() {
             const objOrig = indexOrig !== -1 ? loteActualObj[indexOrig] : { clave: resItem.claveAcceso, intentos: 0 };
 
             if (resItem.estadoFinal === 'ERROR_CONEXION' && objOrig.intentos < MAX_REINTENTOS) {
-              // Reencolar con intentos+1
               clavesEnCola.push({ clave: objOrig.clave, intentos: objOrig.intentos + 1 });
             } else {
               guardarResultadoFinal(resItem);
@@ -563,49 +557,67 @@ async function realizarConsultaMasiva() {
         manejarFalloLote(loteActualObj, err.message);
       }
 
-      function manejarFalloLote(lote, msjError) {
-        lote.forEach(obj => {
-          if (obj.intentos < MAX_REINTENTOS) {
-            clavesEnCola.push({ clave: obj.clave, intentos: obj.intentos + 1 });
-          } else {
-            guardarResultadoFinal({
-              claveAcceso: obj.clave,
-              estadoFinal: 'ERROR_CONEXION',
-              error: true,
-              mensajes: [{ identificador: 'SYS', mensaje: 'Fallo de Red o API', informacionAdicional: msjError, tipo: 'ERROR' }]
-            });
-          }
-        });
-      }
-
-      function guardarResultadoFinal(resItem) {
-        resultadosMasivos.push(resItem);
-        procesados++;
-        switch(resItem.estadoFinal) {
-          case 'AUTORIZADO': case 'SI': stats.autorizados++; break;
-          case 'NO AUTORIZADO': stats.noAutorizados++; break;
-          case 'PENDIENTE DE ANULAR': stats.pendientes++; break;
-          case 'ANULADO': stats.anulados++; break;
-          case 'RECHAZADA': stats.rechazados++; break;
-          case 'ERROR_CONEXION': case 'FORMATO_INVALIDO': 
-            stats.errores++;
-            if (resItem.estadoFinal === 'ERROR_CONEXION') erroresConexion++;
-            break;
-          default: stats.pendientes++; break;
-        }
-      }
-
-      // Actualizar progreso
-      const porcentaje = Math.round((procesados / totalOriginal) * 100) || 0;
-      progresoFill.style.width = `${porcentaje > 100 ? 100 : porcentaje}%`;
-      progresoContador.textContent = `${procesados} / ${totalOriginal}`;
-
       if (clavesEnCola.length > 0 && !consultaCancelada) {
-        // Pausa preventiva (1 segundo si son reintentos, 100ms si es el flujo normal)
-        const proximoReintento = clavesEnCola[0].intentos > 0;
-        await new Promise(r => setTimeout(r, proximoReintento ? 1000 : 100));
+        // Pausa breve para no saturar
+        await new Promise(r => setTimeout(r, 50));
       }
     }
+  };
+
+  function manejarFalloLote(lote, msjError) {
+    lote.forEach(obj => {
+      if (obj.intentos < MAX_REINTENTOS) {
+        clavesEnCola.push({ clave: obj.clave, intentos: obj.intentos + 1 });
+      } else {
+        guardarResultadoFinal({
+          claveAcceso: obj.clave,
+          estadoFinal: 'ERROR_CONEXION',
+          error: true,
+          mensajes: [{ identificador: 'SYS', mensaje: 'Fallo de Red o API', informacionAdicional: msjError, tipo: 'ERROR' }]
+        });
+      }
+    });
+  }
+
+  function guardarResultadoFinal(resItem) {
+    resultadosMasivos.push(resItem);
+    procesados++;
+    switch(resItem.estadoFinal) {
+      case 'AUTORIZADO': case 'SI': stats.autorizados++; break;
+      case 'NO AUTORIZADO': stats.noAutorizados++; break;
+      case 'PENDIENTE DE ANULAR': stats.pendientes++; break;
+      case 'ANULADO': stats.anulados++; break;
+      case 'RECHAZADA': stats.rechazados++; break;
+      case 'ERROR_CONEXION': case 'FORMATO_INVALIDO': 
+        stats.errores++;
+        if (resItem.estadoFinal === 'ERROR_CONEXION') erroresConexion++;
+        break;
+      default: stats.pendientes++; break;
+    }
+    actualizarProgresoUI();
+  }
+
+  function actualizarProgresoUI() {
+    const porcentaje = Math.round((procesados / totalOriginal) * 100) || 0;
+    progresoFill.style.width = `${porcentaje > 100 ? 100 : porcentaje}%`;
+    progresoContador.textContent = `${procesados} / ${totalOriginal}`;
+    
+    progresoStats.innerHTML = `
+      <span style="color:var(--accent-green)">✓ ${stats.autorizados} autorizados</span> · 
+      <span style="color:var(--accent-orange)">✗ ${stats.rechazados} rechazados</span> · 
+      <span style="color:var(--accent-red)">⚠ ${stats.errores} errores</span> · 
+      Tiempo: ${((Date.now() - inicioTiempo) / 1000).toFixed(0)}s
+    `;
+  }
+
+    // Iniciar múltiples trabajadores en paralelo
+    const trabajadores = [];
+    for (let i = 0; i < CONEXIONES_SIMULTANEAS; i++) {
+      trabajadores.push(ejecutarTrabajador(i + 1));
+    }
+    
+    // Esperar a que todos terminen
+    await Promise.all(trabajadores);
 
     const tiempoTotal = Date.now() - inicioTiempo;
 
