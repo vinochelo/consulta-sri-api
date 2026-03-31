@@ -18,7 +18,7 @@ const config = {
   sriEnv: process.env.SRI_ENV || 'produccion',
   maxConcurrent: parseInt(process.env.MAX_CONCURRENT) || 10,
   delayMs: parseInt(process.env.DELAY_MS) || 0,
-  timeout: 30000, // 30 segundos timeout por petición SOAP
+  timeout: 45000, // 45 segundos timeout por petición SOAP (más largo para cierre de mes)
 };
 
 /**

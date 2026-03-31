@@ -214,6 +214,35 @@
         </div>
       </div>
 
+      <!-- Barra de acciones para errores -->
+      <div class="error-actions-bar" id="accionesErrores" style="display: none;">
+        <div class="error-actions-info">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <span><strong id="contadorErrores">0 con error</strong> — Puedes reintentar solo los que fallaron o exportarlos para subirlos después</span>
+        </div>
+        <div class="error-actions-buttons">
+          <button class="btn btn-warning btn-sm" id="btnReintentarErrores" onclick="reintentarSoloErrores()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+            Reintentar Errores
+          </button>
+          <button class="btn btn-outline btn-sm" id="btnExportarErrores" onclick="exportarSoloErrores()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Exportar Solo Errores
+          </button>
+        </div>
+      </div>
+
       <!-- Tabla de Resultados -->
       <div class="card" id="resultadosMasivosCard" style="display: none;">
         <div class="card-header">

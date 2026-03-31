@@ -495,7 +495,7 @@ async function realizarConsultaMasiva() {
 
   const totalOriginal = claves.length;
   let clavesEnCola = claves.map(c => ({ clave: c, intentos: 0 }));
-  const MAX_REINTENTOS = 2; // Intentar hasta 3 veces en total
+  const MAX_REINTENTOS = 3; // Intentar hasta 4 veces en total (para cierre de mes)
 
   resultadosMasivos = [];
   let procesados = 0;
@@ -558,8 +558,10 @@ async function realizarConsultaMasiva() {
       }
 
       if (clavesEnCola.length > 0 && !consultaCancelada) {
-        // Pausa breve para no saturar
-        await new Promise(r => setTimeout(r, 50));
+        // Pausa progresiva: más larga si hay reintentos pendientes
+        const tieneReintentos = clavesEnCola.some(c => c.intentos > 0);
+        const pausaMs = tieneReintentos ? 500 + (clavesEnCola[0]?.intentos || 0) * 800 : 50;
+        await new Promise(r => setTimeout(r, pausaMs));
       }
     }
   };
@@ -652,6 +654,9 @@ async function realizarConsultaMasiva() {
     renderTablaResultados(resultadosMasivos);
     resultadosCard.style.display = 'block';
 
+    // Mostrar/ocultar botones de acción para errores
+    actualizarBotonesErrores();
+
     if (!consultaCancelada) setTimeout(() => { progresoCard.style.display = 'none'; }, 5000);
 
   } catch (err) {
@@ -662,6 +667,153 @@ async function realizarConsultaMasiva() {
     btnConsultar.disabled = false;
     btnCancelar.style.display = 'none';
     actualizarContadorTotal();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// REINTENTAR SOLO ERRORES
+// Toma las claves con ERROR_CONEXION y vuelve a consultarlas
+// ═══════════════════════════════════════════════════════════════
+
+function actualizarBotonesErrores() {
+  const errores = resultadosMasivos.filter(r => r.estadoFinal === 'ERROR_CONEXION');
+  const contenedorAcciones = document.getElementById('accionesErrores');
+  const btnReintentar = document.getElementById('btnReintentarErrores');
+  const btnExportarErr = document.getElementById('btnExportarErrores');
+  const contadorErr = document.getElementById('contadorErrores');
+
+  if (errores.length > 0 && contenedorAcciones) {
+    contenedorAcciones.style.display = 'flex';
+    contadorErr.textContent = `${errores.length} con error`;
+    btnReintentar.disabled = false;
+    btnExportarErr.disabled = false;
+  } else if (contenedorAcciones) {
+    contenedorAcciones.style.display = 'none';
+  }
+}
+
+async function reintentarSoloErrores() {
+  const errores = resultadosMasivos.filter(r => r.estadoFinal === 'ERROR_CONEXION');
+  if (errores.length === 0) {
+    mostrarNotificacion('No hay errores de conexión para reintentar', 'info');
+    return;
+  }
+
+  const clavesError = errores.map(r => r.claveAcceso);
+
+  // Guardar los resultados exitosos (los que NO son error)
+  const resultadosExitosos = resultadosMasivos.filter(r => r.estadoFinal !== 'ERROR_CONEXION');
+
+  // Guardar estado temporal
+  const excelBackup = [...clavesDesdeExcel];
+  const textareaBackup = document.getElementById('clavesTextarea').value;
+
+  // Inyectar solo las claves con error y limpiar textarea
+  clavesDesdeExcel = clavesError;
+  document.getElementById('clavesTextarea').value = '';
+  
+  mostrarNotificacion(`Reintentando ${clavesError.length} claves con error de conexión...`, 'info');
+
+  // Ejecutar consulta masiva con las claves de error
+  await realizarConsultaMasiva();
+
+  // Fusionar: resultados exitosos previos + nuevos resultados del reintento
+  const nuevosResultados = [...resultadosMasivos];
+  resultadosMasivos = [...resultadosExitosos, ...nuevosResultados];
+
+  // Restaurar estado
+  clavesDesdeExcel = excelBackup;
+  document.getElementById('clavesTextarea').value = textareaBackup;
+
+  // Re-renderizar tabla fusionada y actualizar botones
+  renderTablaResultados(resultadosMasivos);
+  actualizarBotonesErrores();
+
+  // Actualizar estadísticas
+  const stats = {
+    autorizados: resultadosMasivos.filter(r => r.estadoFinal === 'AUTORIZADO' || r.estadoFinal === 'SI').length,
+    noAutorizados: resultadosMasivos.filter(r => r.estadoFinal === 'NO AUTORIZADO').length,
+    pendientes: resultadosMasivos.filter(r => r.estadoFinal === 'PENDIENTE DE ANULAR').length,
+    anulados: resultadosMasivos.filter(r => r.estadoFinal === 'ANULADO').length,
+    rechazados: resultadosMasivos.filter(r => r.estadoFinal === 'RECHAZADA').length,
+    errores: resultadosMasivos.filter(r => r.estadoFinal === 'ERROR_CONEXION' || r.estadoFinal === 'FORMATO_INVALIDO').length,
+  };
+  document.getElementById('statAutorizados').textContent = stats.autorizados;
+  document.getElementById('statNoAutorizados').textContent = stats.noAutorizados;
+  document.getElementById('statPendientes').textContent = stats.pendientes;
+  document.getElementById('statAnulados').textContent = stats.anulados;
+  document.getElementById('statRechazados').textContent = stats.rechazados;
+  document.getElementById('statErrores').textContent = stats.errores;
+
+  const erroresRestantes = resultadosMasivos.filter(r => r.estadoFinal === 'ERROR_CONEXION').length;
+  if (erroresRestantes === 0) {
+    mostrarNotificacion('¡Todos los errores se resolvieron exitosamente!', 'success');
+  } else {
+    mostrarNotificacion(`Quedan ${erroresRestantes} claves con error de conexión`, 'error');
+  }
+}
+
+function exportarSoloErrores() {
+  const errores = resultadosMasivos.filter(r => r.estadoFinal === 'ERROR_CONEXION');
+  if (errores.length === 0) {
+    mostrarNotificacion('No hay errores de conexión para exportar', 'info');
+    return;
+  }
+
+  const libro = XLSX.utils.book_new();
+
+  // Hoja 1: Solo claves con error (formato simple para re-subir)
+  const datosResubir = errores.map((r, i) => {
+    const meta = metadatosExcel[r.claveAcceso] || {};
+    return {
+      'autorizacion': r.claveAcceso || '',
+      'Id Proveedor': meta.idProv || '',
+      'Nombre Proveedor': meta.nomProv || '',
+      'Establecimiento': meta.estab || '',
+      'Punto Emisión': meta.ptoEmi || '',
+      'Secuencial': meta.secuencial || '',
+    };
+  });
+
+  const hojaErrores = XLSX.utils.json_to_sheet(datosResubir);
+  hojaErrores['!cols'] = [
+    { wch: 52 },  // autorizacion
+    { wch: 15 },  // Id Proveedor
+    { wch: 30 },  // Nombre Proveedor
+    { wch: 15 },  // Establecimiento
+    { wch: 15 },  // Punto Emisión
+    { wch: 15 },  // Secuencial
+  ];
+  XLSX.utils.book_append_sheet(libro, hojaErrores, 'Errores para reintentar');
+
+  // Hoja 2: Detalle de errores
+  const datosDetalle = errores.map((r, i) => ({
+    '#': i + 1,
+    'Clave de Acceso': r.claveAcceso || '',
+    'Error': r.mensajes && r.mensajes.length > 0
+      ? r.mensajes.map(m => m.informacionAdicional || m.mensaje).join('; ')
+      : 'Error de conexión con el SRI',
+  }));
+  const hojaDetalle = XLSX.utils.json_to_sheet(datosDetalle);
+  hojaDetalle['!cols'] = [{ wch: 6 }, { wch: 52 }, { wch: 60 }];
+  XLSX.utils.book_append_sheet(libro, hojaDetalle, 'Detalle de Errores');
+
+  // Descargar
+  const fecha = new Date().toISOString().slice(0, 10);
+  const nombreArchivo = `errores_sri_${fecha}.xlsx`;
+  
+  try {
+    const excelBuffer = XLSX.write(libro, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([excelBuffer], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nombreArchivo;
+    a.click();
+    URL.revokeObjectURL(url);
+    mostrarNotificacion(`${errores.length} claves con error exportadas a ${nombreArchivo}`, 'success');
+  } catch (err) {
+    mostrarNotificacion('Error al exportar: ' + err.message, 'error');
   }
 }
 
