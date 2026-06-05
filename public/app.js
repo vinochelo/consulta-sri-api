@@ -359,13 +359,23 @@ function analizarInconsistencias(r, meta) {
   const secRetStr = String(meta.secuencialRet || '').trim();
   const autRetStr = String(meta.autRet || '').trim();
 
-  // Si es negocio popular, forzamos tieneRetencion a false para omitir cualquier alerta de retención
-  const tieneRetencion = !esNegocioPopular && (
-                         !esVacioOPlaceholder(estabRetStr) || 
-                         !esVacioOPlaceholder(ptoEmiRetStr) || 
-                         !esVacioOPlaceholder(secRetStr) || 
-                         !esVacioOPlaceholder(autRetStr)
-  );
+  const tieneDatosRetencionEnExcel = !esVacioOPlaceholder(estabRetStr) || 
+                                     !esVacioOPlaceholder(ptoEmiRetStr) || 
+                                     !esVacioOPlaceholder(secRetStr) || 
+                                     !esVacioOPlaceholder(autRetStr);
+
+  const esNotaCredito = docSap.startsWith('17');
+
+  if (esNotaCredito && tieneDatosRetencionEnExcel) {
+    inconsistencias.push({
+      tipo: 'ERROR',
+      titulo: 'Retención en NC',
+      mensaje: `El documento SAP corresponde a una Nota de Crédito (empieza con 17), por lo que no debe tener retención asociada.`
+    });
+  }
+
+  // Si es negocio popular o nota de crédito, no procesamos la retención de manera estándar
+  const tieneRetencion = !esNegocioPopular && !esNotaCredito && tieneDatosRetencionEnExcel;
 
   if (tieneRetencion) {
     let formatoRetCoherente = true;
@@ -1509,23 +1519,38 @@ function exportarSoloErrores() {
 // 4. Autorizados y otros
 function obtenerPrioridadOrdenamiento(r, meta) {
   const incs = r.inconsistencias || analizarInconsistencias(r, meta);
-  const tieneErrorCritico = r.estadoFinal === 'ERROR_INGRESO' || 
-                            r.estadoFinal === 'NO AUTORIZADO' || 
-                            r.estadoFinal === 'RECHAZADA' ||
+  
+  // 1. Factura sin autorización (ERROR_INGRESO, NO AUTORIZADO o inconsistencias de falta de autorización)
+  const esFacturaSinAutorizacion = r.estadoFinal === 'ERROR_INGRESO' || 
+                                  r.estadoFinal === 'NO AUTORIZADO' || 
+                                  incs.some(inc => inc.titulo === 'Sin Autorización' || inc.titulo === 'Error Ingreso');
+
+  if (esFacturaSinAutorizacion) {
+    return 1;
+  }
+
+  // 2. Otros errores críticos (Rechazadas, fallas de conexión o cualquier otra inconsistencia de tipo ERROR)
+  const tieneErrorCritico = r.estadoFinal === 'RECHAZADA' ||
                             r.estadoFinal === 'ERROR_CONEXION' ||
                             r.estadoFinal === 'FORMATO_INVALIDO' ||
                             incs.some(inc => inc.tipo === 'ERROR');
 
   if (tieneErrorCritico) {
-    return 1;
-  }
-  if (r.estadoFinal === 'INGRESO ANULADO') {
     return 2;
   }
-  if (r.estadoFinal === 'SIN_AUTORIZACION_EXTERIOR') {
+  
+  // 3. Ingreso Anulado (leve)
+  if (r.estadoFinal === 'INGRESO ANULADO') {
     return 3;
   }
-  return 4;
+  
+  // 4. Documentos del exterior
+  if (r.estadoFinal === 'SIN_AUTORIZACION_EXTERIOR') {
+    return 4;
+  }
+  
+  // 5. Autorizados y otros
+  return 5;
 }
 
 // ─── Tabla de resultados ─────────────────────────────────────
