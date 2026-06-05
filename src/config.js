@@ -18,12 +18,23 @@ const config = {
   sriEnv: process.env.SRI_ENV || 'produccion',
   maxConcurrent: parseInt(process.env.MAX_CONCURRENT) || 10,
   delayMs: parseInt(process.env.DELAY_MS) || 0,
-  timeout: 45000, // 45 segundos timeout por petición SOAP (más largo para cierre de mes)
+  timeout: 45000,
+
+  // ─── Configuración de Catastros ────────────────────────────────────
+  catastroActualizacionDias: parseInt(process.env.CATASTRO_ACTUALIZACION_DIAS) || 15,
+  catastroSchedulerActivo: process.env.CATASTRO_SCHEDULER !== 'false',
+
+  // ─── Google Drive CDN (Fuente Principal) ───────────────────────────
+  googleDriveEnabled: process.env.GOOGLE_DRIVE_ENABLED === 'true' || process.env.GOOGLE_DRIVE_ENABLED === '1',
+  googleDriveClientId: process.env.GOOGLE_DRIVE_CLIENT_ID || '',
+  googleDriveClientSecret: process.env.GOOGLE_DRIVE_CLIENT_SECRET || '',
+  googleDriveRedirectUri: process.env.GOOGLE_DRIVE_REDIRECT_URI || '',
+  googleDriveFolderId: process.env.GOOGLE_DRIVE_FOLDER_ID || '',
+
+  // Modo servidor principal (sube a Drive cada 15 días)
+  googleDriveMasterServer: process.env.GOOGLE_DRIVE_MASTER === 'true' || process.env.GOOGLE_DRIVE_MASTER === '1',
 };
 
-/**
- * Obtiene las URLs del ambiente actual o de uno específico
- */
 function getAmbiente(ambiente) {
   const env = ambiente || config.sriEnv;
   return AMBIENTES[env] || AMBIENTES.produccion;

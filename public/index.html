@@ -1,27 +1,32 @@
 <!DOCTYPE html>
 <html lang="es" data-theme="light">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Consulta SRI - Comprobantes Electrónicos</title>
-  <meta name="description" content="Dashboard para consulta masiva del estado de autorización de comprobantes electrónicos del SRI Ecuador">
+  <meta name="description"
+    content="Dashboard para consulta masiva del estado de autorización de comprobantes electrónicos del SRI Ecuador">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
   <!-- Header -->
   <header class="header" id="header">
     <div class="header-content">
       <div class="logo">
         <div class="logo-icon">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <line x1="16" y1="13" x2="8" y2="13"/>
-            <line x1="16" y1="17" x2="8" y2="17"/>
-            <polyline points="10 9 9 9 8 9"/>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+            <polyline points="10 9 9 9 8 9" />
           </svg>
         </div>
         <div>
@@ -30,14 +35,36 @@
         </div>
       </div>
       <div class="header-controls">
-        <button id="themeToggle" class="btn btn-ghost btn-sm" title="Cambiar Tema" style="padding: 6px; border-radius: 50%;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="themeIcon">
+        <button id="themeToggle" class="btn btn-ghost btn-sm" title="Cambiar Tema"
+          style="padding: 6px; border-radius: 50%;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" id="themeIcon">
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
           </svg>
         </button>
         <div class="status-badge" id="statusBadge">
           <span class="status-dot"></span>
           <span id="statusText">Conectando...</span>
+        </div>
+
+        <!-- Nueva Campana de Notificaciones -->
+        <div class="notification-wrapper" id="notificationBtn">
+          <div class="notification-trigger">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+            <span class="notification-badge" id="notificationBadge" style="display: none;">0</span>
+          </div>
+          <div class="notification-dropdown" id="notificationDropdown">
+            <div class="notification-header">
+              <h3>Notificaciones</h3>
+              <button class="btn-link" onclick="marcarNotificacionesLeidas()">Marcar todo como leído</button>
+            </div>
+            <div class="notification-list" id="notificationList">
+              <p class="empty-notif">No hay cambios recientes</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -47,17 +74,31 @@
     <!-- Tabs -->
     <div class="tabs" id="tabs">
       <button class="tab" data-tab="individual" id="tabIndividual">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
         Consulta Individual
       </button>
       <button class="tab active" data-tab="masiva" id="tabMasiva">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-          <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" />
+          <rect x="14" y="3" width="7" height="7" />
+          <rect x="3" y="14" width="7" height="7" />
+          <rect x="14" y="14" width="7" height="7" />
         </svg>
         Consulta Masiva
+      </button>
+      <button class="tab" data-tab="catastros" id="tabCatastros">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="16" y1="13" x2="8" y2="13" />
+          <line x1="16" y1="17" x2="8" y2="17" />
+        </svg>
+        Catastros SRI
       </button>
     </div>
 
@@ -72,20 +113,16 @@
           <div class="form-group">
             <label for="claveAccesoInput">Clave de Acceso</label>
             <div class="input-wrapper">
-              <input
-                type="text"
-                id="claveAccesoInput"
-                placeholder="Ej: 0211202401050306179800120010020000000677300995216"
-                maxlength="49"
-                pattern="[0-9]*"
-                inputmode="numeric"
-              >
+              <input type="text" id="claveAccesoInput"
+                placeholder="Ej: 0211202401050306179800120010020000000677300995216" maxlength="49" pattern="[0-9]*"
+                inputmode="numeric">
               <span class="input-counter" id="inputCounter">0/49</span>
             </div>
           </div>
           <button class="btn btn-primary btn-lg" id="btnConsultar" disabled>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             Consultar
           </button>
@@ -116,11 +153,12 @@
             <label>Cargar Archivo Excel</label>
             <div class="excel-dropzone" id="excelDropzone">
               <div class="dropzone-content">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                  <polyline points="14 2 14 8 20 8"/>
-                  <line x1="12" y1="18" x2="12" y2="12"/>
-                  <polyline points="9 15 12 12 15 15"/>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="12" y1="18" x2="12" y2="12" />
+                  <polyline points="9 15 12 12 15 15" />
                 </svg>
                 <p class="dropzone-title">Arrastra tu archivo Excel aquí</p>
                 <p class="dropzone-subtitle">o haz clic para seleccionar un archivo .xlsx / .xls</p>
@@ -130,7 +168,10 @@
             </div>
             <div class="excel-info" id="excelInfo" style="display: none;">
               <div class="excel-info-content">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                </svg>
                 <div>
                   <span class="excel-filename" id="excelFilename"></span>
                   <span class="excel-details" id="excelDetails"></span>
@@ -142,11 +183,8 @@
           <div class="divider-or"><span>o pega manualmente</span></div>
           <div class="form-group">
             <label for="clavesTextarea">Claves de Acceso</label>
-            <textarea
-              id="clavesTextarea"
-              rows="5"
-              placeholder="Pega aquí las claves de acceso, una por línea...&#10;&#10;0211202401050306179800120010020000000677300995216&#10;..."
-            ></textarea>
+            <textarea id="clavesTextarea" rows="5"
+              placeholder="Pega aquí las claves de acceso, una por línea...&#10;&#10;0211202401050306179800120010020000000677300995216&#10;..."></textarea>
             <div class="textarea-footer">
               <span id="contadorClaves">0 claves detectadas</span>
               <div class="textarea-actions">
@@ -156,15 +194,21 @@
           </div>
           <div style="display: flex; gap: 10px;">
             <button class="btn btn-primary btn-lg" id="btnConsultarMasivo" disabled style="flex: 1;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-                <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="7" />
+                <rect x="14" y="3" width="7" height="7" />
+                <rect x="3" y="14" width="7" height="7" />
+                <rect x="14" y="14" width="7" height="7" />
               </svg>
               Consultar Todas
             </button>
             <button class="btn btn-danger btn-lg" id="btnCancelarMasivo" style="display: none;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="15" y1="9" x2="9" y2="15"></line>
+                <line x1="9" y1="9" x2="15" y2="15"></line>
               </svg>
               Cancelar
             </button>
@@ -192,6 +236,14 @@
           <div class="stat-number" id="statAutorizados">0</div>
           <div class="stat-label">Autorizados</div>
         </div>
+        <div class="stat-card stat-inconsistencia">
+          <div class="stat-number" id="statInconsistencias">0</div>
+          <div class="stat-label">Errores Ingreso / AIR</div>
+        </div>
+        <div class="stat-card stat-exterior">
+          <div class="stat-number" id="statExterior">0</div>
+          <div class="stat-label">Facturas Exterior</div>
+        </div>
         <div class="stat-card stat-no-autorizado">
           <div class="stat-number" id="statNoAutorizados">0</div>
           <div class="stat-label">No Autorizados</div>
@@ -210,30 +262,34 @@
         </div>
         <div class="stat-card stat-error">
           <div class="stat-number" id="statErrores">0</div>
-          <div class="stat-label">Errores</div>
+          <div class="stat-label">Errores Red</div>
         </div>
       </div>
 
       <!-- Barra de acciones para errores -->
       <div class="error-actions-bar" id="accionesErrores" style="display: none;">
         <div class="error-actions-info">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"></circle>
             <line x1="12" y1="8" x2="12" y2="12"></line>
             <line x1="12" y1="16" x2="12.01" y2="16"></line>
           </svg>
-          <span><strong id="contadorErrores">0 con error</strong> — Puedes reintentar solo los que fallaron o exportarlos para subirlos después</span>
+          <span><strong id="contadorErrores">0 con error</strong> — Puedes reintentar solo los que fallaron o
+            exportarlos para subirlos después</span>
         </div>
         <div class="error-actions-buttons">
           <button class="btn btn-warning btn-sm" id="btnReintentarErrores" onclick="reintentarSoloErrores()">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
               <polyline points="23 4 23 10 17 10"></polyline>
               <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
             </svg>
             Reintentar Errores
           </button>
           <button class="btn btn-outline btn-sm" id="btnExportarErrores" onclick="exportarSoloErrores()">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="7 10 12 15 17 10"></polyline>
               <line x1="12" y1="15" x2="12" y2="3"></line>
@@ -253,17 +309,20 @@
               <select id="filtroEstado">
                 <option value="todos">Todos</option>
                 <option value="AUTORIZADO">Autorizados</option>
+                <option value="inconsistentes">Errores Ingreso / AIR</option>
+                <option value="exterior">Facturas Exterior</option>
                 <option value="NO AUTORIZADO">No Autorizados</option>
                 <option value="PENDIENTE DE ANULAR">Pendientes</option>
                 <option value="ANULADO">Anulados</option>
                 <option value="RECHAZADA">Rechazados</option>
-                <option value="ERROR_CONEXION">Errores</option>
+                <option value="ERROR_CONEXION">Errores Red</option>
               </select>
             </div>
             <button class="btn btn-success btn-sm" id="btnExportarExcel">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
               </svg>
               Exportar Excel
             </button>
@@ -280,16 +339,168 @@
                 <th>Estab.</th>
                 <th>Punto Emisión</th>
                 <th>Secuencial</th>
-                <th>Estado</th>
+                <th>Validación / Alertas</th>
+                <th>Estado Aut Factura</th>
                 <th>Tipo Comprobante</th>
                 <th>RUC Emisor</th>
                 <th>Fecha Autorización</th>
-                <th>Mensajes SRI</th>
+                <th>Documento SAP</th>
+                <th>Fila Excel</th>
               </tr>
             </thead>
             <tbody id="tablaBody">
             </tbody>
           </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Panel Catastros SRI -->
+    <section class="panel" id="panelCatastros" style="display: none;">
+      <!-- Consulta de RUC en Catastros (MOVIDO ARRIBA) -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Consultar Contribuyente en Catastros</h2>
+          <p>Busca un RUC en todos los catastros descargados para verificar su información</p>
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <label for="rucConsulta">RUC a Consultar</label>
+            <div class="input-wrapper">
+              <input type="text" id="rucConsulta" placeholder="Ej: 1798001200100" maxlength="13" pattern="[0-9]*"
+                inputmode="numeric">
+              <span class="input-counter" id="rucCounter">0/13</span>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-lg" id="btnConsultarRUC" disabled onclick="consultarRUCEnCatastros()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            Buscar en Catastros
+          </button>
+
+          <!-- Resultado de consulta RUC -->
+          <div id="resultadoRUC" class="resultado-ruc" style="display: none;">
+            <!-- Se llena dinámicamente -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Estado del Scheduler -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Programador de Descargas Automáticas</h2>
+          <p>Los catastros se descargan automáticamente cada 15 días para mantener la información actualizada</p>
+        </div>
+        <div class="card-body">
+          <div id="schedulerStatus" class="scheduler-status">
+            <div class="scheduler-info">
+              <span class="scheduler-label">Estado:</span>
+              <span id="schedulerEstado" class="scheduler-value">Cargando...</span>
+            </div>
+            <div class="scheduler-info">
+              <span class="scheduler-label">Última ejecución:</span>
+              <span id="schedulerUltimaEjecucion" class="scheduler-value">-</span>
+            </div>
+            <div class="scheduler-info">
+              <span class="scheduler-label">Descargas exitosas:</span>
+              <span id="schedulerExitosas" class="scheduler-value">0</span>
+            </div>
+            <div class="scheduler-actions">
+              <button class="btn btn-primary btn-sm" id="btnForzarVerificacion" onclick="forzarVerificacionCatastros()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                </svg>
+                Verificar Ahora
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lista de Catastros (CAMBIADO A LISTA SIMPLE) -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Catastros Disponibles del SRI</h2>
+          <div class="card-actions">
+            <button class="btn btn-primary btn-sm" id="btnDescargarTodos" onclick="descargarTodosCatastros()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Descargar Todos
+            </button>
+            <button class="btn btn-success btn-sm" id="btnSincronizarDrive" onclick="sincronizarConDrive()" style="margin-left: 8px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+              Sincronizar Cloud (Drive)
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="catastrosList" class="catastros-simple-list">
+            <div class="loading-state">
+              <div class="spinner-small"></div>
+              <p>Cargando catastros...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Carga Manual de URLs -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Configurar URLs de Descarga</h2>
+          <p>Si el SRI no permite descarga automática, puedes pegar los links manualmente</p>
+        </div>
+          <div id="urlsConfig" class="urls-config">
+            <p class="text-muted">Cargando configuración de URLs...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Maestro de Proveedores Inteligente -->
+      <div class="card card-premium mt-4">
+        <div class="card-header border-b">
+          <div class="card-title-group">
+            <h2 class="text-xl font-bold">Maestro de Proveedores Inteligente</h2>
+            <span class="badge badge-success">Sincronización Automática Activa</span>
+          </div>
+          <div class="card-actions flex gap-2">
+             <button class="btn btn-secondary btn-sm" onclick="sincronizarMaestroManual()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="mr-1">
+                <path d="M23 4v6h-6"></path>
+                <path d="M1 20v-6h6"></path>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+              Sincronizar Ahora
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="document.getElementById('maestroUpload').click()">
+              Subir Maestro Excel
+            </button>
+            <input type="file" id="maestroUpload" hidden accept=".xlsx,.xls,.csv" onchange="subirMaestroExcel(this)">
+          </div>
+        </div>
+        <div class="card-body">
+          <p class="text-secondary mb-4">Proveedores monitoreados 24/7. El sistema audita cambios en el SRI cada 15 días y te notifica automáticamente.</p>
+          <div class="table-container shadow-sm border rounded-lg">
+            <table class="table-modern" id="maestroTable">
+              <thead>
+                <tr>
+                  <th>RUC</th>
+                  <th>Razón Social</th>
+                  <th>Calificación SRI</th>
+                  <th>Última Auditoría</th>
+                </tr>
+              </thead>
+              <tbody id="maestroList">
+                <tr><td colspan="4" class="text-center p-8 text-muted">Cargando maestro de proveedores...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
@@ -304,7 +515,8 @@
     <p>Consultando al SRI...</p>
   </div>
 
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
   <script src="app.js"></script>
 </body>
+
 </html>

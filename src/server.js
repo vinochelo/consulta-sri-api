@@ -3,8 +3,21 @@ const cors = require('cors');
 const path = require('path');
 const { config } = require('./config');
 const routes = require('./routes');
+const { iniciarScheduler } = require('./catalogScheduler');
+const { inicializarGestor } = require('./catalogManager');
 
 const app = express();
+
+// RUTA DE EMERGENCIA ABSOLUTA - PRIMERA PRIORIDAD
+app.get('/auth-test', (req, res) => {
+  try {
+    const googleDriveCdn = require('./googleDriveCdn');
+    const url = googleDriveCdn.generarUrlAutenticacion();
+    res.redirect(url);
+  } catch (error) {
+    res.status(500).send('Error en prioridad 1: ' + error.message);
+  }
+});
 
 // ─── Middleware ────────────────────────────────────────────────────────
 
@@ -29,6 +42,17 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 app.use('/api', routes);
 
+// Ruta de emergencia directa en el servidor
+app.get('/api/login-directo', (req, res) => {
+  try {
+    const googleDriveCdn = require('./googleDriveCdn');
+    const url = googleDriveCdn.generarUrlAutenticacion();
+    res.redirect(url);
+  } catch (error) {
+    res.status(500).send('Error directo: ' + error.message);
+  }
+});
+
 // ─── Ruta raíz → Dashboard ───────────────────────────────────────────
 
 app.get('/', (req, res) => {
@@ -50,6 +74,16 @@ if (!process.env.VERCEL) {
     console.log(`║  Delay:       ${(config.delayMs + 'ms').padEnd(38)}║`);
     console.log('╚══════════════════════════════════════════════════════╝');
     console.log('');
+
+    // Iniciar el programador de descargas de catastros si está configurado
+    if (config.catastroSchedulerActivo) {
+      iniciarScheduler();
+    } else {
+      console.log('[CATASTROS] Scheduler desactivado. Active con: CATASTRO_SCHEDULER=true');
+    }
+
+    // 🔥 PRE-CARGA DE CATASTROS (Nuevo: calentamiento de caché)
+    inicializarGestor().catch(err => console.error('[GESTOR] Error inicializando:', err));
   });
 }
 

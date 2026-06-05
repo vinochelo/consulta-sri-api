@@ -5,3 +5,8 @@ dist
 build
 .DS_Store
 *.log
+service-account.json
+data/catastros/*.xlsx
+data/catastros/*.xls
+data/
+.qwen/
