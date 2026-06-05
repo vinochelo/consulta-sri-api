@@ -150,6 +150,7 @@ function analizarInconsistencias(r, meta) {
   
   // 1. Ingreso Anulado leve (SAP Documento empieza con 52 y sin facturación/autorización)
   const docSap = String(meta.documentoSap || '').trim();
+  const esNotaCredito = docSap.startsWith('17');
   const secFactura = String(meta.secuencial || '').trim();
   const autFactura = valorAutorizacion.startsWith('SIN_CLAVE_FILA') ? '' : valorAutorizacion.trim();
   const autRetencion = String(meta.autRet || '').trim();
@@ -219,21 +220,23 @@ function analizarInconsistencias(r, meta) {
       const tieneAlertasFormato = inconsistencias.some(inc => inc.titulo.startsWith('Formato') && !inc.titulo.includes('Ret'));
       const formatoCoherente = tieneCamposNumeracion && !tieneAlertasFormato;
 
+      const tituloAlerta = esNotaCredito ? 'NC Sin Autorización' : 'Sin Autorización';
+
       if (formatoCoherente) {
         inconsistencias.push({
           tipo: 'ERROR',
-          titulo: 'Sin Autorización',
+          titulo: tituloAlerta,
           mensaje: valorAutorizacion === ''
-            ? `La factura tiene formato de numeración correcto (${estabStr}-${ptoStr}-${secStr}) pero la celda de autorización en el Excel está vacía. Verifique por qué no se generó o registró la autorización.`
-            : `La factura tiene formato de numeración correcto (${estabStr}-${ptoStr}-${secStr}) pero no se ha recuperado su clave de acceso del SRI. Verifique por qué no se generó o registró la autorización.`
+            ? `La ${esNotaCredito ? 'nota de crédito' : 'factura'} tiene formato de numeración correcto (${estabStr}-${ptoStr}-${secStr}) pero la celda de autorización en el Excel está vacía. Verifique por qué no se generó o registró la autorización.`
+            : `La ${esNotaCredito ? 'nota de crédito' : 'factura'} tiene formato de numeración correcto (${estabStr}-${ptoStr}-${secStr}) pero no se ha recuperado su clave de acceso del SRI. Verifique por qué no se generó o registró la autorización.`
         });
       } else {
         inconsistencias.push({
           tipo: 'ERROR',
-          titulo: 'Sin Autorización',
+          titulo: tituloAlerta,
           mensaje: valorAutorizacion === ''
-            ? 'La celda de autorización de la factura en el Excel está vacía.'
-            : `No se recuperó autorización en ERP (se leyó "${valorAutorizacion}"). Probablemente el secuencial o los dígitos de la factura estén mal ingresados.`
+            ? `La celda de autorización de la ${esNotaCredito ? 'nota de crédito' : 'factura'} en el Excel está vacía.`
+            : `No se recuperó autorización en ERP (se leyó "${valorAutorizacion}"). Probablemente el secuencial o los dígitos de la ${esNotaCredito ? 'nota de crédito' : 'factura'} estén mal ingresados.`
         });
       }
     }
@@ -363,8 +366,6 @@ function analizarInconsistencias(r, meta) {
                                      !esVacioOPlaceholder(ptoEmiRetStr) || 
                                      !esVacioOPlaceholder(secRetStr) || 
                                      !esVacioOPlaceholder(autRetStr);
-
-  const esNotaCredito = docSap.startsWith('17');
 
   if (esNotaCredito && tieneDatosRetencionEnExcel) {
     inconsistencias.push({
@@ -1519,38 +1520,55 @@ function exportarSoloErrores() {
 // 4. Autorizados y otros
 function obtenerPrioridadOrdenamiento(r, meta) {
   const incs = r.inconsistencias || analizarInconsistencias(r, meta);
+  const docSap = String(meta.documentoSap || '').trim();
+  const esNotaCredito = docSap.startsWith('17');
   
-  // 1. Factura sin autorización (ERROR_INGRESO, NO AUTORIZADO o inconsistencias de falta de autorización)
-  const esFacturaSinAutorizacion = r.estadoFinal === 'ERROR_INGRESO' || 
+  // A. Nota de Crédito sin autorización (SAP empieza con 17 y no tiene autorización)
+  const esNotaCreditoSinAutorizacion = esNotaCredito && (
+                                       r.estadoFinal === 'ERROR_INGRESO' || 
+                                       r.estadoFinal === 'NO AUTORIZADO' ||
+                                       incs.some(inc => inc.titulo === 'NC Sin Autorización')
+  );
+
+  // B. Factura sin autorización (no es nota de crédito y carece de autorización)
+  const esFacturaSinAutorizacion = !esNotaCredito && (
+                                  r.estadoFinal === 'ERROR_INGRESO' || 
                                   r.estadoFinal === 'NO AUTORIZADO' || 
-                                  incs.some(inc => inc.titulo === 'Sin Autorización' || inc.titulo === 'Error Ingreso');
+                                  incs.some(inc => inc.titulo === 'Sin Autorización' || inc.titulo === 'Error Ingreso')
+  );
+
+  // C. Otros errores críticos (Rechazadas, fallas de conexión o cualquier otra inconsistencia de tipo ERROR)
+  const tieneOtroErrorCritico = !esFacturaSinAutorizacion && !esNotaCreditoSinAutorizacion && (
+                                r.estadoFinal === 'ERROR_INGRESO' ||
+                                r.estadoFinal === 'NO AUTORIZADO' ||
+                                r.estadoFinal === 'RECHAZADA' ||
+                                r.estadoFinal === 'ERROR_CONEXION' ||
+                                r.estadoFinal === 'FORMATO_INVALIDO' ||
+                                incs.some(inc => inc.tipo === 'ERROR')
+  );
 
   if (esFacturaSinAutorizacion) {
     return 1;
   }
-
-  // 2. Otros errores críticos (Rechazadas, fallas de conexión o cualquier otra inconsistencia de tipo ERROR)
-  const tieneErrorCritico = r.estadoFinal === 'RECHAZADA' ||
-                            r.estadoFinal === 'ERROR_CONEXION' ||
-                            r.estadoFinal === 'FORMATO_INVALIDO' ||
-                            incs.some(inc => inc.tipo === 'ERROR');
-
-  if (tieneErrorCritico) {
+  if (tieneOtroErrorCritico) {
     return 2;
   }
-  
-  // 3. Ingreso Anulado (leve)
-  if (r.estadoFinal === 'INGRESO ANULADO') {
+  if (esNotaCreditoSinAutorizacion) {
     return 3;
   }
   
-  // 4. Documentos del exterior
-  if (r.estadoFinal === 'SIN_AUTORIZACION_EXTERIOR') {
+  // 4. Ingreso Anulado (leve)
+  if (r.estadoFinal === 'INGRESO ANULADO') {
     return 4;
   }
   
-  // 5. Autorizados y otros
-  return 5;
+  // 5. Documentos del exterior
+  if (r.estadoFinal === 'SIN_AUTORIZACION_EXTERIOR') {
+    return 5;
+  }
+  
+  // 6. Autorizados y otros
+  return 6;
 }
 
 // ─── Tabla de resultados ─────────────────────────────────────
