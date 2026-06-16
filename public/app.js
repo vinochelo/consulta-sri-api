@@ -12,6 +12,32 @@ let metadatosExcel = {};
 let filasOmitidas = 0;
 let nombreArchivoExcel = '';
 
+function obtenerFilaEIdentificadorExcel(clave) {
+  if (!clave) return '';
+  if (clave.includes('_dup_ret_')) {
+    return clave.split('_dup_ret_')[1];
+  }
+  return clave;
+}
+
+function encontrarMetadatos(clave) {
+  if (!clave) return {};
+  const idExcel = obtenerFilaEIdentificadorExcel(clave);
+  return metadatosExcel[idExcel] || {};
+}
+
+function obtenerNombreTipoComprobante(codigo) {
+  const cod = String(codigo).trim();
+  switch (cod) {
+    case '01': return 'FACTURA';
+    case '04': return 'NOTA DE CRÉDITO';
+    case '05': return 'NOTA DE DÉBITO';
+    case '06': return 'GUÍA DE REMISIÓN';
+    case '07': return 'RETENCIÓN';
+    default: return codigo;
+  }
+}
+
 // Tamaño de cada lote enviado al servidor y concurrencia
 const TAMANO_LOTE = 100;
 const CONEXIONES_SIMULTANEAS = 2; // Cantidad de lotes en paralelo
@@ -144,9 +170,10 @@ function esVacioOPlaceholder(val) {
 function analizarInconsistencias(r, meta) {
   const inconsistencias = [];
   const clave = r.claveAcceso || '';
-  const claveLimpia = clave.split('_dup_')[0];
+  const esConsultaRetencion = clave.includes('_dup_ret_');
+  const claveLimpia = esConsultaRetencion ? '' : clave.split('_dup_')[0];
   
-  const valorAutorizacion = meta.originalValorAutorizacion !== undefined ? meta.originalValorAutorizacion : claveLimpia;
+  const valorAutorizacion = esConsultaRetencion ? '' : (meta.originalValorAutorizacion !== undefined ? meta.originalValorAutorizacion : claveLimpia);
   
   // 1. Ingreso Anulado leve (SAP Documento empieza con 52 y sin facturación/autorización)
   const docSap = String(meta.documentoSap || '').trim();
@@ -222,22 +249,54 @@ function analizarInconsistencias(r, meta) {
 
       const tituloAlerta = esNotaCredito ? 'NC Sin Autorización' : 'Sin Autorización';
 
-      if (formatoCoherente) {
+      // Chequear si el documento tiene una retención autorizada válida
+      const autRetLimpia = String(meta.autRet || '').trim().split('_dup_')[0];
+      const tieneRetencionValida = /^\d{49}$/.test(autRetLimpia) && !/^9{10,}$/.test(autRetLimpia);
+      const facturaSinNumero = esVacioOPlaceholder(meta.secuencial);
+
+      if (tieneRetencionValida && facturaSinNumero) {
+        // En este caso, no agregamos un error crítico sino una advertencia naranja
+        const estadoRet = r.estadoFinal || 'AUTORIZADO';
+        let tipoAlerta = 'ADVERTENCIA';
+        let tituloAlertaRet = 'Retención Activa';
+        let mensajeAlertaRet = `Factura sin autorización, pero posee retención autorizada con estado "${estadoRet}" en el SRI (posible venta en verde o factura anulada).`;
+
+        if (estadoRet === 'ANULADO') {
+          tituloAlertaRet = 'Retención Anulada';
+          mensajeAlertaRet = `La factura no tiene autorización y la retención asociada ha sido ANULADA en el SRI.`;
+        } else if (estadoRet === 'RECHAZADA') {
+          tipoAlerta = 'ERROR';
+          tituloAlertaRet = 'Retención Rechazada';
+          mensajeAlertaRet = `La factura no tiene autorización y la retención asociada fue RECHAZADA en el SRI.`;
+        } else if (estadoRet === 'NO AUTORIZADO') {
+          tipoAlerta = 'ERROR';
+          tituloAlertaRet = 'Retención No Autorizada';
+          mensajeAlertaRet = `La factura no tiene autorización y la retención asociada NO está autorizada en el SRI.`;
+        }
+
         inconsistencias.push({
-          tipo: 'ERROR',
-          titulo: tituloAlerta,
-          mensaje: valorAutorizacion === ''
-            ? `La ${esNotaCredito ? 'nota de crédito' : 'factura'} tiene formato de numeración correcto (${estabStr}-${ptoStr}-${secStr}) pero la celda de autorización en el Excel está vacía. Verifique por qué no se generó o registró la autorización.`
-            : `La ${esNotaCredito ? 'nota de crédito' : 'factura'} tiene formato de numeración correcto (${estabStr}-${ptoStr}-${secStr}) pero no se ha recuperado su clave de acceso del SRI. Verifique por qué no se generó o registró la autorización.`
+          tipo: tipoAlerta,
+          titulo: tituloAlertaRet,
+          mensaje: mensajeAlertaRet
         });
       } else {
-        inconsistencias.push({
-          tipo: 'ERROR',
-          titulo: tituloAlerta,
-          mensaje: valorAutorizacion === ''
-            ? `La celda de autorización de la ${esNotaCredito ? 'nota de crédito' : 'factura'} en el Excel está vacía.`
-            : `No se recuperó autorización en ERP (se leyó "${valorAutorizacion}"). Probablemente el secuencial o los dígitos de la ${esNotaCredito ? 'nota de crédito' : 'factura'} estén mal ingresados.`
-        });
+        if (formatoCoherente) {
+          inconsistencias.push({
+            tipo: 'ERROR',
+            titulo: tituloAlerta,
+            mensaje: valorAutorizacion === ''
+              ? `La ${esNotaCredito ? 'nota de crédito' : 'factura'} tiene formato de numeración correcto (${estabStr}-${ptoStr}-${secStr}) pero la celda de autorización en el Excel está vacía. Verifique por qué no se generó o registró la autorización.`
+              : `La ${esNotaCredito ? 'nota de crédito' : 'factura'} tiene formato de numeración correcto (${estabStr}-${ptoStr}-${secStr}) pero no se ha recuperado su clave de acceso del SRI. Verifique por qué no se generó o registró la autorización.`
+          });
+        } else {
+          inconsistencias.push({
+            tipo: 'ERROR',
+            titulo: tituloAlerta,
+            mensaje: valorAutorizacion === ''
+              ? `La celda de autorización de la ${esNotaCredito ? 'nota de crédito' : 'factura'} en el Excel está vacía.`
+              : `No se recuperó autorización en ERP (se leyó "${valorAutorizacion}"). Probablemente el secuencial o los dígitos de la ${esNotaCredito ? 'nota de crédito' : 'factura'} estén mal ingresados.`
+          });
+        }
       }
     }
   }
@@ -1067,11 +1126,25 @@ async function realizarConsultaMasiva() {
   
   claves.forEach(c => {
     const claveLimpia = c.split('_dup_')[0];
+    const meta = metadatosExcel[c] || {};
     const esProvisional = /^9{10,}$/.test(claveLimpia) || claveLimpia.startsWith('9999');
+    
     if (/^\d{49}$/.test(claveLimpia) && !esProvisional) {
       clavesNormales.push(c);
     } else {
-      clavesEspeciales.push(c);
+      // Caso especial: Factura sin número de documento/secuencial AND con retención autorizada con clave de 49 dígitos
+      const autRetLimpia = String(meta.autRet || '').trim().split('_dup_')[0];
+      const tieneRetencionValida = /^\d{49}$/.test(autRetLimpia) && !/^9{10,}$/.test(autRetLimpia);
+      const facturaSinNumero = esVacioOPlaceholder(meta.secuencial);
+      
+      if (tieneRetencionValida && facturaSinNumero) {
+        // En lugar de procesar offline, mandamos a consultar online la retención.
+        // Construimos una clave de consulta única que asocie esta fila/clave a la retención consultada
+        const queryKey = `${autRetLimpia}_dup_ret_${c}`;
+        clavesNormales.push(queryKey);
+      } else {
+        clavesEspeciales.push(c);
+      }
     }
   });
 
@@ -1091,7 +1164,7 @@ async function realizarConsultaMasiva() {
   try {
     function guardarResultadoFinal(resItem) {
       // Realizar validación inteligente de inconsistencias antes de contar
-      const meta = metadatosExcel[resItem.claveAcceso] || {};
+      const meta = encontrarMetadatos(resItem.claveAcceso);
       const inconsistencias = analizarInconsistencias(resItem, meta);
       resItem.inconsistencias = inconsistencias; // Guardar en el objeto
       
@@ -1105,12 +1178,23 @@ async function realizarConsultaMasiva() {
       
       resultadosMasivos.push(resItem);
       procesados++;
+      const esRetencionQuery = resItem.claveAcceso && resItem.claveAcceso.includes('_dup_ret_');
       switch (resItem.estadoFinal) {
-        case 'AUTORIZADO': case 'SI': stats.autorizados++; break;
-        case 'NO AUTORIZADO': stats.noAutorizados++; break;
-        case 'PENDIENTE DE ANULAR': stats.pendientes++; break;
-        case 'ANULADO': stats.anulados++; break;
-        case 'RECHAZADA': stats.rechazados++; break;
+        case 'AUTORIZADO': case 'SI': 
+          if (!esRetencionQuery) stats.autorizados++; 
+          break;
+        case 'NO AUTORIZADO': 
+          if (!esRetencionQuery) stats.noAutorizados++; 
+          break;
+        case 'PENDIENTE DE ANULAR': 
+          if (!esRetencionQuery) stats.pendientes++; 
+          break;
+        case 'ANULADO': 
+          if (!esRetencionQuery) stats.anulados++; 
+          break;
+        case 'RECHAZADA': 
+          if (!esRetencionQuery) stats.rechazados++; 
+          break;
         case 'SIN_AUTORIZACION_EXTERIOR':
           // Contabilizado en exterior, no cuenta como estado normal SRI
           break;
@@ -1122,7 +1206,9 @@ async function realizarConsultaMasiva() {
           stats.errores++;
           if (resItem.estadoFinal === 'ERROR_CONEXION') erroresConexion++;
           break;
-        default: stats.pendientes++; break;
+        default: 
+          if (!esRetencionQuery) stats.pendientes++; 
+          break;
       }
       actualizarProgresoUI();
     }
@@ -1419,17 +1505,17 @@ async function reintentarSoloErrores() {
 
   // Actualizar estadísticas
   const stats = {
-    autorizados: resultadosMasivos.filter(r => r.estadoFinal === 'AUTORIZADO' || r.estadoFinal === 'SI').length,
+    autorizados: resultadosMasivos.filter(r => (r.estadoFinal === 'AUTORIZADO' || r.estadoFinal === 'SI') && !r.claveAcceso.includes('_dup_ret_')).length,
     inconsistencias: resultadosMasivos.filter(r => {
-      const meta = metadatosExcel[r.claveAcceso] || {};
+      const meta = encontrarMetadatos(r.claveAcceso);
       const incs = r.inconsistencias || analizarInconsistencias(r, meta);
       return incs.some(inc => inc.tipo === 'ERROR' || inc.tipo === 'ADVERTENCIA');
     }).length,
     exterior: resultadosMasivos.filter(r => r.estadoFinal === 'SIN_AUTORIZACION_EXTERIOR').length,
-    noAutorizados: resultadosMasivos.filter(r => r.estadoFinal === 'NO AUTORIZADO').length,
-    pendientes: resultadosMasivos.filter(r => r.estadoFinal === 'PENDIENTE DE ANULAR').length,
-    anulados: resultadosMasivos.filter(r => r.estadoFinal === 'ANULADO').length,
-    rechazados: resultadosMasivos.filter(r => r.estadoFinal === 'RECHAZADA').length,
+    noAutorizados: resultadosMasivos.filter(r => r.estadoFinal === 'NO AUTORIZADO' && !r.claveAcceso.includes('_dup_ret_')).length,
+    pendientes: resultadosMasivos.filter(r => r.estadoFinal === 'PENDIENTE DE ANULAR' && !r.claveAcceso.includes('_dup_ret_')).length,
+    anulados: resultadosMasivos.filter(r => r.estadoFinal === 'ANULADO' && !r.claveAcceso.includes('_dup_ret_')).length,
+    rechazados: resultadosMasivos.filter(r => r.estadoFinal === 'RECHAZADA' && !r.claveAcceso.includes('_dup_ret_')).length,
     errores: resultadosMasivos.filter(r => r.estadoFinal === 'ERROR_CONEXION' || r.estadoFinal === 'FORMATO_INVALIDO').length,
   };
   document.getElementById('statAutorizados').textContent = stats.autorizados;
@@ -1460,7 +1546,7 @@ function exportarSoloErrores() {
 
   // Hoja 1: Solo claves con error (formato simple para re-subir)
   const datosResubir = errores.map((r, i) => {
-    const meta = metadatosExcel[r.claveAcceso] || {};
+    const meta = encontrarMetadatos(r.claveAcceso);
     return {
       'autorizacion': r.claveAcceso || '',
       'Id Proveedor': meta.idProv || '',
@@ -1579,8 +1665,8 @@ function renderTablaResultados(resultadosOriginal) {
 
   // Ordenar por prioridad predefinida y luego por fila original para mantener coherencia
   const resultados = [...resultadosOriginal].sort((a, b) => {
-    const metaA = metadatosExcel[a.claveAcceso] || {};
-    const metaB = metadatosExcel[b.claveAcceso] || {};
+    const metaA = encontrarMetadatos(a.claveAcceso);
+    const metaB = encontrarMetadatos(b.claveAcceso);
     const prioA = obtenerPrioridadOrdenamiento(a, metaA);
     const prioB = obtenerPrioridadOrdenamiento(b, metaB);
     
@@ -1599,8 +1685,15 @@ function renderTablaResultados(resultadosOriginal) {
       ? r.mensajes.map(m => m.informacionAdicional || m.mensaje).join('; ')
       : '—';
 
-    const meta = metadatosExcel[r.claveAcceso] || { idProv: '—', nomProv: '—', estab: '—', ptoEmi: '—', secuencial: '—', documentoSap: '—' };
-    const valorAutorizacion = meta.originalValorAutorizacion || r.claveAcceso || '—';
+    const meta = encontrarMetadatos(r.claveAcceso);
+    
+    let valorAutorizacion = meta.originalValorAutorizacion || '';
+    if (r.claveAcceso && r.claveAcceso.includes('_dup_ret_')) {
+      valorAutorizacion = `Ret: ${meta.autRet || '—'}`;
+    } else if (!valorAutorizacion && r.claveAcceso) {
+      valorAutorizacion = r.claveAcceso.split('_dup_')[0];
+    }
+    if (!valorAutorizacion) valorAutorizacion = '—';
     
     const inconsistencias = r.inconsistencias || analizarInconsistencias(r, meta);
     
@@ -1625,10 +1718,13 @@ function renderTablaResultados(resultadosOriginal) {
     const tr = document.createElement('tr');
     
     // Aplicar clases de fila
+    const esRetencionQuery = r.claveAcceso && r.claveAcceso.includes('_dup_ret_');
     if (r.estadoFinal === 'SIN_AUTORIZACION_EXTERIOR') {
       tr.classList.add('row-exterior');
     } else if (r.estadoFinal === 'INGRESO ANULADO') {
       tr.classList.add('row-anulado-leve');
+    } else if (esRetencionQuery) {
+      tr.classList.add('row-advertencia');
     } else if (inconsistencias.some(inc => inc.tipo === 'ERROR' || inc.tipo === 'ADVERTENCIA')) {
       tr.classList.add('row-inconsistente');
     }
@@ -1643,7 +1739,7 @@ function renderTablaResultados(resultadosOriginal) {
       <td>${meta.secuencial || '—'}</td>
       <td>${alertaHTML}</td>
       <td><span class="estado-badge estado-${estadoCSS}">${r.estadoFinal || '—'}</span></td>
-      <td>${r.tipoComprobante || '—'}</td>
+      <td>${obtenerNombreTipoComprobante(r.tipoComprobante) || '—'}</td>
       <td>${r.rucEmisor || '—'}</td>
       <td>${r.fechaAutorizacion ? formatearFecha(r.fechaAutorizacion) : '—'}</td>
       <td>${meta.documentoSap || '—'}</td>
@@ -1660,7 +1756,7 @@ function initFiltro() {
     const filtro = e.target.value;
     if (filtro === 'inconsistentes') {
       const filtered = resultadosMasivos.filter(r => {
-        const meta = metadatosExcel[r.claveAcceso] || {};
+        const meta = encontrarMetadatos(r.claveAcceso);
         const incs = r.inconsistencias || analizarInconsistencias(r, meta);
         return incs.some(inc => inc.tipo === 'ERROR' || inc.tipo === 'ADVERTENCIA');
       });
@@ -1687,8 +1783,8 @@ async function exportarExcel() {
 
   // Ordenar resultados antes de exportar usando el mismo orden de prioridades
   const resultadosOrdenados = [...resultadosMasivos].sort((a, b) => {
-    const metaA = metadatosExcel[a.claveAcceso] || {};
-    const metaB = metadatosExcel[b.claveAcceso] || {};
+    const metaA = encontrarMetadatos(a.claveAcceso);
+    const metaB = encontrarMetadatos(b.claveAcceso);
     const prioA = obtenerPrioridadOrdenamiento(a, metaA);
     const prioB = obtenerPrioridadOrdenamiento(b, metaB);
     
@@ -1703,13 +1799,18 @@ async function exportarExcel() {
 
   // Preparar datos para la hoja principal
   const datos = resultadosOrdenados.map((r, i) => {
-    const meta = metadatosExcel[r.claveAcceso] || {};
+    const meta = encontrarMetadatos(r.claveAcceso);
     const incs = r.inconsistencias || [];
     const inconsistenciasTexto = incs.map(inc => `[${inc.titulo}] ${inc.mensaje}`).join('; ');
     
+    let valorAutorizacion = meta.originalValorAutorizacion !== undefined ? meta.originalValorAutorizacion : r.claveAcceso;
+    if (r.claveAcceso && r.claveAcceso.includes('_dup_ret_')) {
+      valorAutorizacion = `Ret: ${meta.autRet || '—'}`;
+    }
+    
     return {
       '#': i + 1,
-      'Clave de Acceso / Valor Excel': meta.originalValorAutorizacion !== undefined ? meta.originalValorAutorizacion : r.claveAcceso,
+      'Clave de Acceso / Valor Excel': valorAutorizacion,
       'Id Proveedor': meta.idProv || '',
       'Nombre Proveedor': meta.nomProv || '',
       'Establecimiento': meta.estab || '',
@@ -1721,7 +1822,7 @@ async function exportarExcel() {
       'Autorización Retención': meta.autRet || '',
       'Validaciones / Alertas': inconsistenciasTexto || 'Correcto',
       'Estado Aut Factura': r.estadoFinal || '',
-      'Tipo Comprobante': r.tipoComprobante || '',
+      'Tipo Comprobante': obtenerNombreTipoComprobante(r.tipoComprobante) || '',
       'RUC Emisor': r.rucEmisor || '',
       'Fecha Autorización': r.fechaAutorizacion ? formatearFecha(r.fechaAutorizacion) : '',
       'Documento SAP': meta.documentoSap || '',
@@ -1776,21 +1877,24 @@ async function exportarExcel() {
     // Estilo base para todas las celdas de datos
     // Resaltar en rojo muy suave si la factura o retención tiene un error crítico
     const r = resultadosOrdenados[row - 2];
-    const meta = metadatosExcel[r.claveAcceso] || {};
+    const meta = encontrarMetadatos(r.claveAcceso);
     const incs = r.inconsistencias || analizarInconsistencias(r, meta);
-    const tieneErrorCritico = r.estadoFinal === 'ERROR_INGRESO' || 
+    const esRetencionQuery = r.claveAcceso && r.claveAcceso.includes('_dup_ret_');
+    const tieneErrorCritico = !esRetencionQuery && (
+                              r.estadoFinal === 'ERROR_INGRESO' || 
                               r.estadoFinal === 'NO AUTORIZADO' || 
                               r.estadoFinal === 'RECHAZADA' ||
                               r.estadoFinal === 'ERROR_CONEXION' ||
                               r.estadoFinal === 'FORMATO_INVALIDO' ||
-                              incs.some(inc => inc.tipo === 'ERROR');
+                              incs.some(inc => inc.tipo === 'ERROR')
+                            );
     const esIngresoAnuladoLeve = r.estadoFinal === 'INGRESO ANULADO';
 
     let bgRGB = "FFFFFF";
     if (tieneErrorCritico) {
       bgRGB = "FDF2F2"; // Rojo suave
-    } else if (esIngresoAnuladoLeve) {
-      bgRGB = "FEF3C7"; // Amarillo/Naranja suave (ingreso anulado)
+    } else if (esIngresoAnuladoLeve || esRetencionQuery) {
+      bgRGB = "FEF3C7"; // Amarillo/Naranja suave (ingreso anulado o consulta de retención)
     }
 
     hojaResultados[ref].s = {
@@ -1843,18 +1947,18 @@ async function exportarExcel() {
   // Hoja 2: Resumen
   const resumen = [
     { 'Concepto': 'Total consultados', 'Valor': resultadosMasivos.length },
-    { 'Concepto': 'Autorizados', 'Valor': resultadosMasivos.filter(r => r.estadoFinal === 'AUTORIZADO').length },
+    { 'Concepto': 'Autorizados', 'Valor': resultadosMasivos.filter(r => r.estadoFinal === 'AUTORIZADO' && !r.claveAcceso.includes('_dup_ret_')).length },
     { 'Concepto': 'Facturas del Exterior', 'Valor': resultadosMasivos.filter(r => r.estadoFinal === 'SIN_AUTORIZACION_EXTERIOR').length },
     { 'Concepto': 'Errores de Ingreso / Inconsistencias', 'Valor': resultadosMasivos.filter(r => {
-        const meta = metadatosExcel[r.claveAcceso] || {};
+        const meta = encontrarMetadatos(r.claveAcceso);
         const incs = r.inconsistencias || [];
         return incs.some(inc => inc.tipo === 'ERROR' || inc.tipo === 'ADVERTENCIA');
       }).length
     },
-    { 'Concepto': 'No Autorizados', 'Valor': resultadosMasivos.filter(r => r.estadoFinal === 'NO AUTORIZADO').length },
-    { 'Concepto': 'Pendientes de Anular', 'Valor': resultadosMasivos.filter(r => r.estadoFinal === 'PENDIENTE DE ANULAR').length },
-    { 'Concepto': 'Anulados', 'Valor': resultadosMasivos.filter(r => r.estadoFinal === 'ANULADO').length },
-    { 'Concepto': 'Rechazados', 'Valor': resultadosMasivos.filter(r => r.estadoFinal === 'RECHAZADA').length },
+    { 'Concepto': 'No Autorizados', 'Valor': resultadosMasivos.filter(r => r.estadoFinal === 'NO AUTORIZADO' && !r.claveAcceso.includes('_dup_ret_')).length },
+    { 'Concepto': 'Pendientes de Anular', 'Valor': resultadosMasivos.filter(r => r.estadoFinal === 'PENDIENTE DE ANULAR' && !r.claveAcceso.includes('_dup_ret_')).length },
+    { 'Concepto': 'Anulados', 'Valor': resultadosMasivos.filter(r => r.estadoFinal === 'ANULADO' && !r.claveAcceso.includes('_dup_ret_')).length },
+    { 'Concepto': 'Rechazados', 'Valor': resultadosMasivos.filter(r => r.estadoFinal === 'RECHAZADA' && !r.claveAcceso.includes('_dup_ret_')).length },
     { 'Concepto': 'Errores de conexión / Red', 'Valor': resultadosMasivos.filter(r => r.estadoFinal === 'ERROR_CONEXION' || r.estadoFinal === 'FORMATO_INVALIDO').length },
     { 'Concepto': '', 'Valor': '' },
     { 'Concepto': 'Fecha de consulta', 'Valor': new Date().toLocaleString('es-EC') },

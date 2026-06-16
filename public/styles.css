@@ -1727,6 +1727,13 @@ select option {
   background: rgba(245, 158, 11, 0.10) !important;
 }
 
+.results-table tbody tr.row-advertencia {
+  background: rgba(245, 158, 11, 0.06) !important;
+}
+.results-table tbody tr.row-advertencia:hover {
+  background: rgba(245, 158, 11, 0.10) !important;
+}
+
 .inconsistency-badge-container {
   display: flex;
   flex-direction: column;
