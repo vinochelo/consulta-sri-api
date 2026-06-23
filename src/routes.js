@@ -143,9 +143,31 @@ router.post('/consulta', async (req, res) => {
 
     const resultado = await consultarComprobante(claveNormalizada, ambiente);
 
+    // Extraer RUC y buscar en catastros
+    let esNegocioPopular = false;
+    let esGranContribuyente = false;
+    let esExportadorHabitual = false;
+    try {
+      const rucEmisor = claveNormalizada.substring(10, 23);
+      const busqueda = await buscarRUCEnCatastro(rucEmisor, 'todos');
+      esNegocioPopular = !!(busqueda && busqueda.rimpe_negocios_populares && busqueda.rimpe_negocios_populares.encontrado);
+      esGranContribuyente = !!(busqueda && busqueda.grandes_contribuyentes && busqueda.grandes_contribuyentes.encontrado);
+      esExportadorHabitual = !!((busqueda && busqueda.exportadores_bienes && busqueda.exportadores_bienes.encontrado) || 
+                                (busqueda && busqueda.exportadores_servicios && busqueda.exportadores_servicios.encontrado));
+    } catch (err) {
+      console.error('[CATASTRO] Error buscando RUC en consulta individual:', err.message);
+    }
+
+    const resultadoEnriquecido = {
+      ...resultado,
+      esNegocioPopular,
+      esGranContribuyente,
+      esExportadorHabitual
+    };
+
     console.log(`[RESULTADO] ${claveNormalizada} → ${resultado.estadoFinal}`);
 
-    res.json(resultado);
+    res.json(resultadoEnriquecido);
   } catch (error) {
     console.error('[ERROR] Consulta individual:', error.message);
     res.status(500).json({
@@ -226,13 +248,18 @@ router.post('/consulta/masiva', async (req, res) => {
     for (const resItem of resultadosSRIUnicos) {
       const baseClave = resItem.claveAcceso;
       
-      // Extraer RUC (dígitos 10 a 22 de la clave) y buscar en catastro rimpe_negocios_populares
+      // Extraer RUC (dígitos 10 a 22 de la clave) y buscar en todos los catastros
       let esNegocioPopular = false;
+      let esGranContribuyente = false;
+      let esExportadorHabitual = false;
       if (baseClave && baseClave.length === 49) {
         try {
           const rucEmisor = baseClave.substring(10, 23);
-          const busqueda = await buscarRUCEnCatastro(rucEmisor, 'rimpe_negocios_populares');
+          const busqueda = await buscarRUCEnCatastro(rucEmisor, 'todos');
           esNegocioPopular = !!(busqueda && busqueda.rimpe_negocios_populares && busqueda.rimpe_negocios_populares.encontrado);
+          esGranContribuyente = !!(busqueda && busqueda.grandes_contribuyentes && busqueda.grandes_contribuyentes.encontrado);
+          esExportadorHabitual = !!((busqueda && busqueda.exportadores_bienes && busqueda.exportadores_bienes.encontrado) || 
+                                    (busqueda && busqueda.exportadores_servicios && busqueda.exportadores_servicios.encontrado));
         } catch (err) {
           console.error('[CATASTRO] Error buscando RUC en consulta masiva:', err.message);
         }
@@ -243,7 +270,9 @@ router.post('/consulta/masiva', async (req, res) => {
         resultadosSRI.push({
           ...resItem,
           claveAcceso: orig,
-          esNegocioPopular
+          esNegocioPopular,
+          esGranContribuyente,
+          esExportadorHabitual
         });
       });
     }
@@ -305,9 +334,31 @@ router.post('/factura-negociable', async (req, res) => {
 
     const resultado = await consultarFacturaNegociable(claveNormalizada, ambiente);
 
+    // Extraer RUC y buscar en catastros
+    let esNegocioPopular = false;
+    let esGranContribuyente = false;
+    let esExportadorHabitual = false;
+    try {
+      const rucEmisor = claveNormalizada.substring(10, 23);
+      const busqueda = await buscarRUCEnCatastro(rucEmisor, 'todos');
+      esNegocioPopular = !!(busqueda && busqueda.rimpe_negocios_populares && busqueda.rimpe_negocios_populares.encontrado);
+      esGranContribuyente = !!(busqueda && busqueda.grandes_contribuyentes && busqueda.grandes_contribuyentes.encontrado);
+      esExportadorHabitual = !!((busqueda && busqueda.exportadores_bienes && busqueda.exportadores_bienes.encontrado) || 
+                                (busqueda && busqueda.exportadores_servicios && busqueda.exportadores_servicios.encontrado));
+    } catch (err) {
+      console.error('[CATASTRO] Error buscando RUC en consulta factura negociable:', err.message);
+    }
+
+    const resultadoEnriquecido = {
+      ...resultado,
+      esNegocioPopular,
+      esGranContribuyente,
+      esExportadorHabitual
+    };
+
     console.log(`[RESULTADO] ${claveNormalizada} → ${resultado.estadoFinal}`);
 
-    res.json(resultado);
+    res.json(resultadoEnriquecido);
   } catch (error) {
     console.error('[ERROR] Consulta factura negociable:', error.message);
     res.status(500).json({

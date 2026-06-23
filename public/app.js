@@ -531,18 +531,30 @@ function analizarInconsistencias(r, meta) {
       const tieneAlertasFormatoRet = inconsistencias.some(inc => inc.titulo.startsWith('Formato Estab Ret') || inc.titulo.startsWith('Formato Punto Ret') || inc.titulo.startsWith('Formato Secuencial Ret'));
       const numeracionRetCoherente = tieneCamposNumeracionRet && !tieneAlertasFormatoRet;
 
-      if (numeracionRetCoherente) {
+      const esGC = r && r.esGranContribuyente;
+      const esEH = r && r.esExportadorHabitual;
+      const esExentoRetencionCompleta = esGC && esEH;
+
+      if (esExentoRetencionCompleta) {
         inconsistencias.push({
-          tipo: 'ERROR',
-          titulo: 'Retención Sin Autorización',
-          mensaje: `Se emitió la retención ${estabRetStr}-${ptoEmiRetStr}-${secRetStr} pero no se ha recuperado su clave de acceso del SRI. Verifique por qué no se generó o registró la autorización de la retención.`
+          tipo: 'ADVERTENCIA',
+          titulo: 'Proveedor Exento',
+          mensaje: `El proveedor es Gran Contribuyente y Exportador Habitual, por lo que está exento de retenciones de IVA y de Renta (correcto el ingreso sin retención).`
         });
       } else {
-        inconsistencias.push({
-          tipo: 'ERROR',
-          titulo: 'Retención Sin Aut',
-          mensaje: `Se detectaron datos de retención en Excel pero falta o es incorrecto el número de autorización de retención (se leyó "${autRetStr}").`
-        });
+        if (numeracionRetCoherente) {
+          inconsistencias.push({
+            tipo: 'ERROR',
+            titulo: 'Retención Sin Autorización',
+            mensaje: `Se emitió la retención ${estabRetStr}-${ptoEmiRetStr}-${secRetStr} pero no se ha recuperado su clave de acceso del SRI. Verifique por qué no se generó o registró la autorización de la retención.`
+          });
+        } else {
+          inconsistencias.push({
+            tipo: 'ERROR',
+            titulo: 'Retención Sin Aut',
+            mensaje: `Se detectaron datos de retención en Excel pero falta o es incorrecto el número de autorización de retención (se leyó "${autRetStr}").`
+          });
+        }
       }
     } else {
       // Si la clave de acceso de retención tiene 49 dígitos, validar el dígito verificador
@@ -1305,6 +1317,8 @@ async function realizarConsultaMasiva() {
     }).filter(Boolean))];
 
     const mapaRucNP = {};
+    const mapaRucGC = {};
+    const mapaRucEH = {};
     if (rucsEspeciales.length > 0) {
       progresoTexto.textContent = 'Verificando regímenes de catastros físicos...';
       await Promise.all(rucsEspeciales.map(async ruc => {
@@ -1314,6 +1328,12 @@ async function realizarConsultaMasiva() {
             const data = await res.json();
             if (data.busqueda?.rimpe_negocios_populares?.encontrado) {
               mapaRucNP[ruc] = true;
+            }
+            if (data.busqueda?.grandes_contribuyentes?.encontrado) {
+              mapaRucGC[ruc] = true;
+            }
+            if (data.busqueda?.exportadores_bienes?.encontrado || data.busqueda?.exportadores_servicios?.encontrado) {
+              mapaRucEH[ruc] = true;
             }
           }
         } catch (err) {
@@ -1335,6 +1355,8 @@ async function realizarConsultaMasiva() {
                           tipoDocUpper.includes('NOTAS DE VENTA') || 
                           tipoDocUpper === 'NV';
       const esNP = mapaRucNP[ruc] || esNotaVenta;
+      const esGC = mapaRucGC[ruc] || false;
+      const esEH = mapaRucEH[ruc] || false;
 
       let estadoFinalLocal = 'ERROR_INGRESO';
       let mensajesLocal = [];
@@ -1417,7 +1439,10 @@ async function realizarConsultaMasiva() {
         tipoComprobante: meta.originalValorAutorizacion !== undefined ? 'N/A' : null,
         rucEmisor: null,
         fechaAutorizacion: null,
-        esLocalSpecial: true
+        esLocalSpecial: true,
+        esNegocioPopular: esNP,
+        esGranContribuyente: esGC,
+        esExportadorHabitual: esEH
       };
       
       guardarResultadoFinal(resLocal);
@@ -2032,8 +2057,8 @@ async function exportarExcel() {
     let bgRGB = "FFFFFF";
     if (tieneErrorCritico) {
       bgRGB = "FDF2F2"; // Rojo suave
-    } else if (esIngresoAnuladoLeve || esRetencionQuery || (esNotaCreditoVieja && (r.estadoFinal === 'NO AUTORIZADO' || r.estadoFinal === 'RECHAZADA'))) {
-      bgRGB = "FEF3C7"; // Amarillo/Naranja suave (ingreso anulado, físico NP o consulta de retención)
+    } else if (esIngresoAnuladoLeve || esRetencionQuery || (esNotaCreditoVieja && (r.estadoFinal === 'NO AUTORIZADO' || r.estadoFinal === 'RECHAZADA')) || incs.some(inc => inc.titulo === 'Proveedor Exento')) {
+      bgRGB = "FEF3C7"; // Amarillo/Naranja suave (ingreso anulado, físico NP, consulta de retención o proveedor exento)
     }
 
     hojaResultados[ref].s = {
@@ -2053,7 +2078,7 @@ async function exportarExcel() {
       if (val === 'Correcto' || val.includes('Negocio Popular') || val.includes('Exterior')) {
         hojaResultados[ref].s.fill = { patternType: "solid", fgColor: { rgb: "D4EDDA" } }; // Verde suave
         hojaResultados[ref].s.font = { color: { rgb: "155724" }, bold: true, name: "Calibri", sz: 10 };
-      } else if (val.includes('ADVERTENCIA') || val.includes('[Formato') || val.includes('[Autorización 9s]') || val.includes('[Ingreso Anulado]') || val.includes('[Antigüedad') || val.includes('[Comprobante Físico')) {
+      } else if (val.includes('ADVERTENCIA') || val.includes('[Formato') || val.includes('[Autorización 9s]') || val.includes('[Ingreso Anulado]') || val.includes('[Antigüedad') || val.includes('[Comprobante Físico') || val.includes('[Proveedor Exento]')) {
         hojaResultados[ref].s.fill = { patternType: "solid", fgColor: { rgb: "FFF3CD" } }; // Amarillo suave
         hojaResultados[ref].s.font = { color: { rgb: "856404" }, bold: true, name: "Calibri", sz: 10 };
       } else if (val !== '') { // Errores
