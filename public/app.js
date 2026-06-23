@@ -30,6 +30,7 @@ function obtenerNombreTipoComprobante(codigo) {
   const cod = String(codigo).trim();
   switch (cod) {
     case '01': return 'FACTURA';
+    case '03': return 'LIQUIDACIÓN DE COMPRA';
     case '04': return 'NOTA DE CRÉDITO';
     case '05': return 'NOTA DE DÉBITO';
     case '06': return 'GUÍA DE REMISIÓN';
@@ -123,11 +124,38 @@ function validarDigitoVerificador(clave) {
   return verificadorCalculado === digitoVerificadorEsperado;
 }
 
+// Calcula la antigüedad de un comprobante en días basándose en la fecha de emisión codificada en su clave de acceso
+function obtenerAntiguedadClave(clave) {
+  if (!clave || clave.length < 8) return 0;
+  const dia = parseInt(clave.substring(0, 2), 10);
+  const mes = parseInt(clave.substring(2, 4), 10) - 1; // 0-indexed en JS
+  const anio = parseInt(clave.substring(4, 8), 10);
+  if (isNaN(dia) || isNaN(mes) || isNaN(anio)) return 0;
+  
+  const fechaDoc = new Date(anio, mes, dia);
+  const hoy = new Date();
+  const hoyMidnight = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  const diffTime = hoyMidnight - fechaDoc;
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+}
+
 // Determina si una factura es del exterior (importación) sin clave del SRI
 function detectarFacturaExterior(meta, autorizacion) {
-  const estab = String(meta.estab || '').trim().toUpperCase();
-  const pto = String(meta.ptoEmi || '').trim().toUpperCase();
-  const sec = String(meta.secuencial || '').trim().toUpperCase();
+  const m = meta || {};
+  const autLimpia = String(autorizacion || '').trim().split('_dup_')[0];
+  const esLiquidacionPorClave = autLimpia.length === 49 && autLimpia.substring(8, 10) === '03';
+  const tipoDocUpper = String(m.tipoDoc || '').trim().toUpperCase();
+  const esLiquidacionCompra = esLiquidacionPorClave ||
+                              tipoDocUpper === 'LC' || 
+                              tipoDocUpper.includes('LIQ') || 
+                              tipoDocUpper.includes('LIQUIDACION');
+  if (esLiquidacionCompra) {
+    return true;
+  }
+
+  const estab = String(m.estab || '').trim().toUpperCase();
+  const pto = String(m.ptoEmi || '').trim().toUpperCase();
+  const sec = String(m.secuencial || '').trim().toUpperCase();
   const aut = String(autorizacion || '').trim().toUpperCase();
   
   // Si contiene palabras típicas de error de ingreso del ERP, NO es exterior
@@ -178,6 +206,14 @@ function analizarInconsistencias(r, meta) {
   // 1. Ingreso Anulado leve (SAP Documento empieza con 52 y sin facturación/autorización)
   const docSap = String(meta.documentoSap || '').trim();
   const esNotaCredito = docSap.startsWith('17');
+  
+  const tipoDocUpper = String(meta.tipoDoc || '').trim().toUpperCase();
+  const esNotaVenta = tipoDocUpper === 'VD' || 
+                      tipoDocUpper.includes('NOTA DE VENTA') || 
+                      tipoDocUpper.includes('NOTA_VENTA') || 
+                      tipoDocUpper.includes('NOTAS DE VENTA') || 
+                      tipoDocUpper === 'NV';
+  const esNegocioPopular = (r && r.esNegocioPopular) || esNotaVenta;
   const secFactura = String(meta.secuencial || '').trim();
   const autFactura = valorAutorizacion.startsWith('SIN_CLAVE_FILA') ? '' : valorAutorizacion.trim();
   const autRetencion = String(meta.autRet || '').trim();
@@ -318,7 +354,14 @@ function analizarInconsistencias(r, meta) {
         // Comparar RUC
         const rucExcelNorm = String(meta.idProv || '').replace(/\D/g, '');
         const rucClaveNorm = String(claveParts.rucEmisor).replace(/\D/g, '');
-        if (rucExcelNorm && rucClaveNorm) {
+        
+        const tipoDocUpper = String(meta.tipoDoc || '').trim().toUpperCase();
+        const esLiquidacionCompra = (claveLimpia.length === 49 && claveLimpia.substring(8, 10) === '03') || 
+                                    tipoDocUpper === 'LC' || 
+                                    tipoDocUpper.includes('LIQ') || 
+                                    tipoDocUpper.includes('LIQUIDACION');
+        
+        if (!esLiquidacionCompra && rucExcelNorm && rucClaveNorm) {
           let rucMismatch = false;
           if (rucExcelNorm.length === 13) {
             rucMismatch = rucExcelNorm !== rucClaveNorm;
@@ -370,11 +413,19 @@ function analizarInconsistencias(r, meta) {
         }
       }
     } else {
-      inconsistencias.push({
-        tipo: 'ERROR',
-        titulo: 'Formato Incompleto',
-        mensaje: `La autorización "${valorAutorizacion}" no contiene 49 dígitos numéricos.`
-      });
+      if (esNegocioPopular) {
+        inconsistencias.push({
+          tipo: 'ADVERTENCIA',
+          titulo: 'Nota Venta Física',
+          mensaje: `El contribuyente es RIMPE Negocio Popular y emite comprobante físico. La autorización "${valorAutorizacion}" no contiene 49 dígitos, lo cual es normal para este régimen.`
+        });
+      } else {
+        inconsistencias.push({
+          tipo: 'ERROR',
+          titulo: 'Formato Incompleto',
+          mensaje: `La autorización "${valorAutorizacion}" no contiene 49 dígitos numéricos.`
+        });
+      }
     }
   }
   
@@ -406,8 +457,6 @@ function analizarInconsistencias(r, meta) {
 
   // 5. Validar Documento de Retención (Establecimiento, Punto, Secuencial y Autorización de Retención)
   // Verificar si el emisor es RIMPE Negocio Popular (desde backend esNegocioPopular o desde columna t documento = 'VD')
-  const esNegocioPopular = r.esNegocioPopular || String(meta.tipoDoc || '').trim().toUpperCase() === 'VD';
-  
   if (esNegocioPopular) {
     inconsistencias.push({
       tipo: 'SUCCESS',
@@ -426,6 +475,8 @@ function analizarInconsistencias(r, meta) {
                                      !esVacioOPlaceholder(secRetStr) || 
                                      !esVacioOPlaceholder(autRetStr);
 
+  // Omitido por requerimiento del usuario: No debe dar error de retención en NC
+  /*
   if (esNotaCredito && tieneDatosRetencionEnExcel) {
     inconsistencias.push({
       tipo: 'ERROR',
@@ -433,6 +484,7 @@ function analizarInconsistencias(r, meta) {
       mensaje: `El documento SAP corresponde a una Nota de Crédito (empieza con 17), por lo que no debe tener retención asociada.`
     });
   }
+  */
 
   // Si es negocio popular o nota de crédito, no procesamos la retención de manera estándar
   const tieneRetencion = !esNegocioPopular && !esNotaCredito && tieneDatosRetencionEnExcel;
@@ -504,6 +556,17 @@ function analizarInconsistencias(r, meta) {
     }
   }
   
+  // Regla especial para Notas de Crédito antiguas (Dinners / etc.) mayores a 30 días de antigüedad
+  const antDias = obtenerAntiguedadClave(claveLimpia);
+  const esNotaCreditoVieja = esNotaCredito && antDias > 30;
+  if (esNotaCreditoVieja && (r.estadoFinal === 'NO AUTORIZADO' || r.estadoFinal === 'RECHAZADA')) {
+    inconsistencias.push({
+      tipo: 'ADVERTENCIA',
+      titulo: 'Antigüedad > 30 días',
+      mensaje: `La Nota de Crédito tiene ${antDias} días de antigüedad (mes anterior). El SRI reporta estado "${r.estadoFinal}", pero debido a limitaciones de consulta del SRI para documentos anteriores a 30 días, se presume correcta.`
+    });
+  }
+
   return inconsistencias;
 }
 
@@ -1129,7 +1192,14 @@ async function realizarConsultaMasiva() {
     const meta = metadatosExcel[c] || {};
     const esProvisional = /^9{10,}$/.test(claveLimpia) || claveLimpia.startsWith('9999');
     
-    if (/^\d{49}$/.test(claveLimpia) && !esProvisional) {
+    // Identificar si es Liquidación de Compra
+    const tipoDocUpper = String(meta.tipoDoc || '').trim().toUpperCase();
+    const esLiquidacionCompra = (claveLimpia.length === 49 && claveLimpia.substring(8, 10) === '03') || 
+                                tipoDocUpper === 'LC' || 
+                                tipoDocUpper.includes('LIQ') || 
+                                tipoDocUpper.includes('LIQUIDACION');
+    
+    if (/^\d{49}$/.test(claveLimpia) && !esProvisional && !esLiquidacionCompra) {
       clavesNormales.push(c);
     } else {
       // Caso especial: Factura sin número de documento/secuencial AND con retención autorizada con clave de 49 dígitos
@@ -1200,6 +1270,7 @@ async function realizarConsultaMasiva() {
           break;
         case 'ERROR_INGRESO':
         case 'INGRESO ANULADO':
+        case 'FISICO_NP':
           // Contabilizado en inconsistencias, no es error de red
           break;
         case 'ERROR_CONEXION': case 'FORMATO_INVALIDO':
@@ -1227,11 +1298,44 @@ async function realizarConsultaMasiva() {
       `;
     }
 
+    // 1. Extraer los RUCs de las claves especiales para ver cuáles son RIMPE Negocios Populares
+    const rucsEspeciales = [...new Set(clavesEspeciales.map(c => {
+      const meta = metadatosExcel[c] || {};
+      return meta.idProv;
+    }).filter(Boolean))];
+
+    const mapaRucNP = {};
+    if (rucsEspeciales.length > 0) {
+      progresoTexto.textContent = 'Verificando regímenes de catastros físicos...';
+      await Promise.all(rucsEspeciales.map(async ruc => {
+        try {
+          const res = await fetch(`${API_BASE}/catastros/buscar/${ruc}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.busqueda?.rimpe_negocios_populares?.encontrado) {
+              mapaRucNP[ruc] = true;
+            }
+          }
+        } catch (err) {
+          console.error('Error buscando RUC en catastros:', err);
+        }
+      }));
+    }
+
     // Procesar especiales localmente e instantáneamente
     clavesEspeciales.forEach(c => {
       const meta = metadatosExcel[c] || {};
       const valorOrig = meta.originalValorAutorizacion !== undefined ? meta.originalValorAutorizacion : c;
+      const ruc = meta.idProv;
       
+      const tipoDocUpper = String(meta.tipoDoc || '').trim().toUpperCase();
+      const esNotaVenta = tipoDocUpper === 'VD' || 
+                          tipoDocUpper.includes('NOTA DE VENTA') || 
+                          tipoDocUpper.includes('NOTA_VENTA') || 
+                          tipoDocUpper.includes('NOTAS DE VENTA') || 
+                          tipoDocUpper === 'NV';
+      const esNP = mapaRucNP[ruc] || esNotaVenta;
+
       let estadoFinalLocal = 'ERROR_INGRESO';
       let mensajesLocal = [];
 
@@ -1256,6 +1360,14 @@ async function realizarConsultaMasiva() {
         }];
       } else if (detectarFacturaExterior(meta, valorOrig)) {
         estadoFinalLocal = 'SIN_AUTORIZACION_EXTERIOR';
+      } else if (esNP) {
+        estadoFinalLocal = 'FISICO_NP';
+        mensajesLocal = [{
+          identificador: 'VAL',
+          mensaje: 'Comprobante Físico RIMPE NP',
+          informacionAdicional: `El contribuyente es RIMPE Negocio Popular y emite comprobante físico. La autorización "${valorOrig}" no contiene 49 dígitos, lo cual es normal para este régimen.`,
+          tipo: 'ADVERTENCIA'
+        }];
       } else if (/^9{10,}$/.test(valorOrig) || valorOrig.startsWith('9999')) {
         estadoFinalLocal = 'NO AUTORIZADO';
         mensajesLocal = [{
@@ -1609,8 +1721,13 @@ function obtenerPrioridadOrdenamiento(r, meta) {
   const docSap = String(meta.documentoSap || '').trim();
   const esNotaCredito = docSap.startsWith('17');
   
-  // A. Nota de Crédito sin autorización (SAP empieza con 17 y no tiene autorización)
-  const esNotaCreditoSinAutorizacion = esNotaCredito && (
+  const clave = r.claveAcceso || '';
+  const claveLimpia = clave.split('_dup_')[0];
+  const antDias = obtenerAntiguedadClave(claveLimpia);
+  const esNotaCreditoVieja = esNotaCredito && antDias > 30;
+
+  // A. Nota de Crédito sin autorización (SAP empieza con 17 y no tiene autorización) - excluyendo viejas
+  const esNotaCreditoSinAutorizacion = esNotaCredito && !esNotaCreditoVieja && (
                                        r.estadoFinal === 'ERROR_INGRESO' || 
                                        r.estadoFinal === 'NO AUTORIZADO' ||
                                        incs.some(inc => inc.titulo === 'NC Sin Autorización')
@@ -1623,14 +1740,15 @@ function obtenerPrioridadOrdenamiento(r, meta) {
                                   incs.some(inc => inc.titulo === 'Sin Autorización' || inc.titulo === 'Error Ingreso')
   );
 
-  // C. Otros errores críticos (Rechazadas, fallas de conexión o cualquier otra inconsistencia de tipo ERROR)
+  // C. Otros errores críticos (Rechazadas, fallas de conexión o cualquier otra inconsistencia de tipo ERROR) - excluyendo viejas notas de crédito con NO AUTORIZADO/RECHAZADA
   const tieneOtroErrorCritico = !esFacturaSinAutorizacion && !esNotaCreditoSinAutorizacion && (
-                                r.estadoFinal === 'ERROR_INGRESO' ||
-                                r.estadoFinal === 'NO AUTORIZADO' ||
-                                r.estadoFinal === 'RECHAZADA' ||
-                                r.estadoFinal === 'ERROR_CONEXION' ||
-                                r.estadoFinal === 'FORMATO_INVALIDO' ||
-                                incs.some(inc => inc.tipo === 'ERROR')
+                                (r.estadoFinal === 'ERROR_INGRESO' ||
+                                 r.estadoFinal === 'NO AUTORIZADO' ||
+                                 r.estadoFinal === 'RECHAZADA' ||
+                                 r.estadoFinal === 'ERROR_CONEXION' ||
+                                 r.estadoFinal === 'FORMATO_INVALIDO' ||
+                                 incs.some(inc => inc.tipo === 'ERROR')) && 
+                                !(esNotaCreditoVieja && (r.estadoFinal === 'NO AUTORIZADO' || r.estadoFinal === 'RECHAZADA'))
   );
 
   if (esFacturaSinAutorizacion) {
@@ -1643,8 +1761,8 @@ function obtenerPrioridadOrdenamiento(r, meta) {
     return 3;
   }
   
-  // 4. Ingreso Anulado (leve)
-  if (r.estadoFinal === 'INGRESO ANULADO') {
+  // 4. Ingreso Anulado (leve), Físico NP o Nota de Crédito antigua con estado SRI NO AUTORIZADO/RECHAZADA
+  if (r.estadoFinal === 'INGRESO ANULADO' || r.estadoFinal === 'FISICO_NP' || (esNotaCreditoVieja && (r.estadoFinal === 'NO AUTORIZADO' || r.estadoFinal === 'RECHAZADA'))) {
     return 4;
   }
   
@@ -1680,13 +1798,22 @@ function renderTablaResultados(resultadosOriginal) {
   });
 
   resultados.forEach((r, i) => {
-    const estadoCSS = (r.estadoFinal || '').replace(/ /g, '_');
+    const meta = encontrarMetadatos(r.claveAcceso);
+    const docSap = String(meta.documentoSap || '').trim();
+    const esNotaCredito = docSap.startsWith('17');
+    const claveLimpia = (r.claveAcceso || '').split('_dup_')[0];
+    const antDias = obtenerAntiguedadClave(claveLimpia);
+    const esNotaCreditoVieja = esNotaCredito && antDias > 30;
+
+    let estadoCSS = (r.estadoFinal || '').replace(/ /g, '_');
+    if (esNotaCreditoVieja && (r.estadoFinal === 'NO AUTORIZADO' || r.estadoFinal === 'RECHAZADA')) {
+      estadoCSS = 'PENDIENTE_DE_ANULAR'; // Estilo amarillo
+    }
+
     const detalle = r.mensajes && r.mensajes.length > 0
       ? r.mensajes.map(m => m.informacionAdicional || m.mensaje).join('; ')
       : '—';
 
-    const meta = encontrarMetadatos(r.claveAcceso);
-    
     let valorAutorizacion = meta.originalValorAutorizacion || '';
     if (r.claveAcceso && r.claveAcceso.includes('_dup_ret_')) {
       valorAutorizacion = `Ret: ${meta.autRet || '—'}`;
@@ -1723,10 +1850,16 @@ function renderTablaResultados(resultadosOriginal) {
       tr.classList.add('row-exterior');
     } else if (r.estadoFinal === 'INGRESO ANULADO') {
       tr.classList.add('row-anulado-leve');
+    } else if (r.estadoFinal === 'FISICO_NP') {
+      tr.classList.add('row-advertencia');
     } else if (esRetencionQuery) {
       tr.classList.add('row-advertencia');
-    } else if (inconsistencias.some(inc => inc.tipo === 'ERROR' || inc.tipo === 'ADVERTENCIA')) {
+    } else if (esNotaCreditoVieja && (r.estadoFinal === 'NO AUTORIZADO' || r.estadoFinal === 'RECHAZADA')) {
+      tr.classList.add('row-advertencia');
+    } else if (inconsistencias.some(inc => inc.tipo === 'ERROR')) {
       tr.classList.add('row-inconsistente');
+    } else if (inconsistencias.some(inc => inc.tipo === 'ADVERTENCIA')) {
+      tr.classList.add('row-advertencia');
     }
 
     tr.innerHTML = `
@@ -1880,21 +2013,27 @@ async function exportarExcel() {
     const meta = encontrarMetadatos(r.claveAcceso);
     const incs = r.inconsistencias || analizarInconsistencias(r, meta);
     const esRetencionQuery = r.claveAcceso && r.claveAcceso.includes('_dup_ret_');
+    const docSap = String(meta.documentoSap || '').trim();
+    const esNotaCredito = docSap.startsWith('17');
+    const claveLimpia = (r.claveAcceso || '').split('_dup_')[0];
+    const antDias = obtenerAntiguedadClave(claveLimpia);
+    const esNotaCreditoVieja = esNotaCredito && antDias > 30;
+
     const tieneErrorCritico = !esRetencionQuery && (
                               r.estadoFinal === 'ERROR_INGRESO' || 
-                              r.estadoFinal === 'NO AUTORIZADO' || 
-                              r.estadoFinal === 'RECHAZADA' ||
+                              (r.estadoFinal === 'NO AUTORIZADO' && !esNotaCreditoVieja) || 
+                              (r.estadoFinal === 'RECHAZADA' && !esNotaCreditoVieja) ||
                               r.estadoFinal === 'ERROR_CONEXION' ||
                               r.estadoFinal === 'FORMATO_INVALIDO' ||
                               incs.some(inc => inc.tipo === 'ERROR')
                             );
-    const esIngresoAnuladoLeve = r.estadoFinal === 'INGRESO ANULADO';
+    const esIngresoAnuladoLeve = r.estadoFinal === 'INGRESO ANULADO' || r.estadoFinal === 'FISICO_NP';
 
     let bgRGB = "FFFFFF";
     if (tieneErrorCritico) {
       bgRGB = "FDF2F2"; // Rojo suave
-    } else if (esIngresoAnuladoLeve || esRetencionQuery) {
-      bgRGB = "FEF3C7"; // Amarillo/Naranja suave (ingreso anulado o consulta de retención)
+    } else if (esIngresoAnuladoLeve || esRetencionQuery || (esNotaCreditoVieja && (r.estadoFinal === 'NO AUTORIZADO' || r.estadoFinal === 'RECHAZADA'))) {
+      bgRGB = "FEF3C7"; // Amarillo/Naranja suave (ingreso anulado, físico NP o consulta de retención)
     }
 
     hojaResultados[ref].s = {
@@ -1914,7 +2053,7 @@ async function exportarExcel() {
       if (val === 'Correcto' || val.includes('Negocio Popular') || val.includes('Exterior')) {
         hojaResultados[ref].s.fill = { patternType: "solid", fgColor: { rgb: "D4EDDA" } }; // Verde suave
         hojaResultados[ref].s.font = { color: { rgb: "155724" }, bold: true, name: "Calibri", sz: 10 };
-      } else if (val.includes('ADVERTENCIA') || val.includes('[Formato') || val.includes('[Autorización 9s]') || val.includes('[Ingreso Anulado]')) {
+      } else if (val.includes('ADVERTENCIA') || val.includes('[Formato') || val.includes('[Autorización 9s]') || val.includes('[Ingreso Anulado]') || val.includes('[Antigüedad') || val.includes('[Comprobante Físico')) {
         hojaResultados[ref].s.fill = { patternType: "solid", fgColor: { rgb: "FFF3CD" } }; // Amarillo suave
         hojaResultados[ref].s.font = { color: { rgb: "856404" }, bold: true, name: "Calibri", sz: 10 };
       } else if (val !== '') { // Errores
@@ -1932,7 +2071,7 @@ async function exportarExcel() {
       } else if (val === 'SIN_AUTORIZACION_EXTERIOR') {
         hojaResultados[ref].s.fill = { patternType: "solid", fgColor: { rgb: "D1ECF1" } }; // Azul suave
         hojaResultados[ref].s.font = { color: { rgb: "0C5460" }, bold: true, name: "Calibri", sz: 10 };
-      } else if (val === 'INGRESO ANULADO') {
+      } else if (val === 'INGRESO ANULADO' || val === 'FISICO_NP' || (esNotaCreditoVieja && (val === 'NO AUTORIZADO' || val === 'RECHAZADA'))) {
         hojaResultados[ref].s.fill = { patternType: "solid", fgColor: { rgb: "FFE8A1" } }; // Naranja/Amarillo medio
         hojaResultados[ref].s.font = { color: { rgb: "856404" }, bold: true, name: "Calibri", sz: 10 };
       } else if (val.startsWith('ERROR_') || val === 'NO AUTORIZADO' || val === 'RECHAZADA' || val === 'ERROR_INGRESO') {
@@ -2024,6 +2163,7 @@ function obtenerClaseEstado(estado) {
     'NO AUTORIZADO': 'no-autorizado', 'RECHAZADA': 'rechazada',
     'PENDIENTE DE ANULAR': 'pendiente', 'ANULADO': 'anulado',
     'ERROR_CONEXION': 'no-autorizado', 'FORMATO_INVALIDO': 'no-autorizado',
+    'FISICO_NP': 'pendiente',
   };
   return mapa[estado] || '';
 }
