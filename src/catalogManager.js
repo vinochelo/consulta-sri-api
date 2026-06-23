@@ -231,12 +231,33 @@ const httpsAgent = new https.Agent({
 
 // ─── Funciones auxiliares ───────────────────────────────────────────────
 
-/**
- * Asegura que el directorio de catastros exista
- */
 async function asegurarDirectorio() {
   try {
     await fs.mkdir(CATASTROS_DIR, { recursive: true });
+    
+    // Si estamos en Vercel o la carpeta destino es temporal/diferente de la del bundle,
+    // copiar los archivos empaquetados para inicializar de forma instantánea
+    const isVercel = !!process.env.VERCEL;
+    const rutaBundle = path.join(__dirname, '..', 'data', 'catastros');
+    
+    if (fsSync.existsSync(rutaBundle) && CATASTROS_DIR !== rutaBundle) {
+      console.log(`[GESTOR] 🚀 Inicializando directorio ${CATASTROS_DIR} desde el bundle...`);
+      const archivos = fsSync.readdirSync(rutaBundle);
+      for (const archivo of archivos) {
+        const origen = path.join(rutaBundle, archivo);
+        const destino = path.join(CATASTROS_DIR, archivo);
+        
+        // Copiar si no existe en el destino
+        if (!fsSync.existsSync(destino)) {
+          try {
+            fsSync.copyFileSync(origen, destino);
+            console.log(`  ✓ Copiado al inicio: ${archivo}`);
+          } catch (copyErr) {
+            console.error(`  ❌ Error copiando ${archivo}:`, copyErr.message);
+          }
+        }
+      }
+    }
   } catch (error) {
     if (error.code !== 'EEXIST') throw error;
   }
