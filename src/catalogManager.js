@@ -126,6 +126,7 @@ function limpiarRUC(ruc) {
  * Asegura que un catastro esté cargado en memoria y actualizado.
  */
 async function asegurarCache(tipo) {
+  await asegurarDirectorio();
   const rutaArchivo = obtenerRutaArchivo(tipo);
   
   if (!fsSync.existsSync(rutaArchivo)) return null;
@@ -1534,6 +1535,7 @@ async function validarMultiplesRetenciones(retenciones) {
  * Esto evita la lentitud de la primera búsqueda.
  */
 async function inicializarGestor() {
+  await asegurarDirectorio();
   console.log('\n[GESTOR] 🔥 Iniciando pre-carga de catastros en segundo plano...');
   const tipos = Object.keys(CATASTROS_CONFIG);
   
