@@ -34,7 +34,7 @@ const CATASTROS_CONFIG = {
   grandes_contribuyentes: {
     nombre: 'Grandes Contribuyentes',
     descripcion: 'Listado de grandes contribuyentes del SRI',
-    url: 'https://www.sri.gob.ec/catastros', // Requiere scraping del botón "Descargar"
+    url: 'https://www.sri.gob.ec/o/sri-portlet-biblioteca-alfresco-internet/descargar/42c75ec2-95cb-4fa3-9d7b-dc5f59e9e4e2/Catastro%20Grandes%20Contribuyentes.xlsx', // Enlace directo fallback
     tipo: 'excel',
     campos: ['ruc', 'nombre', 'categoria'],
     actualizacionAutomatica: true,
@@ -42,7 +42,7 @@ const CATASTROS_CONFIG = {
   agentes_retencion: {
     nombre: 'Agentes de Retención',
     descripcion: 'Catastro de agentes de retención autorizados',
-    url: 'https://www.sri.gob.ec/catastros',
+    url: 'https://www.sri.gob.ec/o/sri-portlet-biblioteca-alfresco-internet/descargar/d23fe911-81c1-4e64-a1d0-d6e0a1f519ca/02%20Agentes%20de%20retenci%C3%B3n.pdf',
     tipo: 'excel',
     campos: ['ruc', 'nombre', 'tipo_retencion'],
     actualizacionAutomatica: true,
@@ -50,7 +50,7 @@ const CATASTROS_CONFIG = {
   exportadores_bienes: {
     nombre: 'Exportadores Habituales de Bienes',
     descripcion: 'Catálogo de exportadores habituales de bienes (retención IVA)',
-    url: 'https://www.sri.gob.ec/catastros',
+    url: 'https://www.sri.gob.ec/o/sri-portlet-biblioteca-alfresco-internet/descargar/42ca9c72-324c-4f96-9f64-4743c3b8ddc6/Catastro_de_exportadores_bienes.xls',
     tipo: 'excel',
     campos: ['ruc', 'nombre', 'certificado', 'vigencia'],
     actualizacionAutomatica: true,
@@ -58,7 +58,7 @@ const CATASTROS_CONFIG = {
   exportadores_servicios: {
     nombre: 'Exportadores Habituales de Servicios',
     descripcion: 'Catálogo de exportadores habituales de servicios (retención IVA)',
-    url: 'https://www.sri.gob.ec/catastros',
+    url: 'https://www.sri.gob.ec/o/sri-portlet-biblioteca-alfresco-internet/descargar/2a87d5b1-7f66-448a-ad8f-2c9a417a5bb9/Catastro_de_exportadores_servicios.xls',
     tipo: 'excel',
     campos: ['ruc', 'nombre', 'certificado', 'vigencia'],
     actualizacionAutomatica: true,
@@ -82,7 +82,7 @@ const CATASTROS_CONFIG = {
   contribuyentes_especiales: {
     nombre: 'Contribuyentes Especiales',
     descripcion: 'Catastro de contribuyentes especiales',
-    url: 'https://www.sri.gob.ec/catastros',
+    url: 'https://www.sri.gob.ec/o/sri-portlet-biblioteca-alfresco-internet/descargar/d913cbd7-09aa-40a5-aa87-ed78d8c6ee41/INFORMACI%C3%93N%20DE%20CONTRIBUYENTES%20ESPECIALES.xls',
     tipo: 'excel',
     campos: ['ruc', 'nombre'],
     actualizacionAutomatica: true,
@@ -315,6 +315,25 @@ async function obtenerURLDescarga(tipo) {
     const matches = html.match(regexDescarga);
 
     if (matches && matches.length > 0) {
+      // Filtrar los matches según el tipo de catastro
+      let keyword = '';
+      if (tipo === 'grandes_contribuyentes') keyword = 'Grandes';
+      else if (tipo === 'agentes_retencion') keyword = 'retencion';
+      else if (tipo === 'exportadores_bienes') keyword = 'exportadores_bienes';
+      else if (tipo === 'exportadores_servicios') keyword = 'exportadores_servicios';
+      else if (tipo === 'rimpe_emprendedores') keyword = 'emprendedores';
+      else if (tipo === 'rimpe_negocios_populares') keyword = 'negocios_populares';
+      else if (tipo === 'contribuyentes_especiales') keyword = 'ESPECIALES';
+      else if (tipo === 'porcentajes_renta') keyword = 'renta';
+      else if (tipo === 'porcentajes_iva') keyword = 'IVA';
+
+      if (keyword) {
+        const matchFiltrado = matches.find(m => m.toLowerCase().includes(keyword.toLowerCase()));
+        if (matchFiltrado) {
+          return `https://www.sri.gob.ec${matchFiltrado}`;
+        }
+      }
+
       // Devolver el primer match encontrado (debería ser el más relevante)
       return `https://www.sri.gob.ec${matches[0]}`;
     }
