@@ -1736,6 +1736,43 @@ function exportarSoloErrores() {
   }
 }
 
+// Determina la sub-prioridad para la categoría naranja (advertencias y leves)
+// 1. Proveedor Exento
+// 2. Físico NP
+// 3. Ingreso Anulado
+// 4. Nota de Crédito antigua
+// 5. Consulta de Retención
+// 6. Otras advertencias generales
+function obtenerSubPrioridad(r, meta, incs) {
+  const docSap = String(meta.documentoSap || '').trim();
+  const esNotaCredito = docSap.startsWith('17');
+  const clave = r.claveAcceso || '';
+  const claveLimpia = clave.split('_dup_')[0];
+  const antDias = obtenerAntiguedadClave(claveLimpia);
+  const esNotaCreditoVieja = esNotaCredito && antDias > 30;
+  const esRetencionQuery = clave.includes('_dup_ret_');
+
+  if (incs.some(inc => inc.titulo === 'Proveedor Exento')) {
+    return 1;
+  }
+  if (r.estadoFinal === 'FISICO_NP') {
+    return 2;
+  }
+  if (r.estadoFinal === 'INGRESO ANULADO') {
+    return 3;
+  }
+  if (esNotaCreditoVieja && (r.estadoFinal === 'NO AUTORIZADO' || r.estadoFinal === 'RECHAZADA')) {
+    return 4;
+  }
+  if (esRetencionQuery) {
+    return 5;
+  }
+  if (incs.some(inc => inc.tipo === 'ADVERTENCIA')) {
+    return 6;
+  }
+  return 99;
+}
+
 // Determina la prioridad de ordenamiento de una fila (menor valor = mayor prioridad)
 // 1. Errores críticos (ERROR_INGRESO, NO AUTORIZADO, RECHAZADA o inconsistencias tipo ERROR)
 // 2. Ingreso Anulado (leve)
@@ -1786,8 +1823,16 @@ function obtenerPrioridadOrdenamiento(r, meta) {
     return 3;
   }
   
-  // 4. Ingreso Anulado (leve), Físico NP o Nota de Crédito antigua con estado SRI NO AUTORIZADO/RECHAZADA
-  if (r.estadoFinal === 'INGRESO ANULADO' || r.estadoFinal === 'FISICO_NP' || (esNotaCreditoVieja && (r.estadoFinal === 'NO AUTORIZADO' || r.estadoFinal === 'RECHAZADA'))) {
+  // 4. Advertencias y Leves (Categoría Naranja/Amarilla)
+  const esProveedorExento = incs.some(inc => inc.titulo === 'Proveedor Exento');
+  const tieneAdvertencia = incs.some(inc => inc.tipo === 'ADVERTENCIA');
+  const esRetencionQuery = clave.includes('_dup_ret_');
+  if (esProveedorExento || 
+      r.estadoFinal === 'INGRESO ANULADO' || 
+      r.estadoFinal === 'FISICO_NP' || 
+      (esNotaCreditoVieja && (r.estadoFinal === 'NO AUTORIZADO' || r.estadoFinal === 'RECHAZADA')) ||
+      tieneAdvertencia ||
+      esRetencionQuery) {
     return 4;
   }
   
@@ -1800,27 +1845,46 @@ function obtenerPrioridadOrdenamiento(r, meta) {
   return 6;
 }
 
+// Compara dos resultados por sus prioridades, sub-prioridades, tipos de inconsistencias y fila original
+function compararResultados(a, b) {
+  const metaA = encontrarMetadatos(a.claveAcceso);
+  const metaB = encontrarMetadatos(b.claveAcceso);
+  const prioA = obtenerPrioridadOrdenamiento(a, metaA);
+  const prioB = obtenerPrioridadOrdenamiento(b, metaB);
+  
+  if (prioA !== prioB) {
+    return prioA - prioB;
+  }
+
+  const incsA = a.inconsistencias || analizarInconsistencias(a, metaA);
+  const incsB = b.inconsistencias || analizarInconsistencias(b, metaB);
+  const subA = obtenerSubPrioridad(a, metaA, incsA);
+  const subB = obtenerSubPrioridad(b, metaB, incsB);
+
+  if (subA !== subB) {
+    return subA - subB;
+  }
+
+  // Agrupar por el título de la primera inconsistencia para mantener en secuencia el mismo tipo de error
+  const tituloA = incsA[0] ? String(incsA[0].titulo) : '';
+  const tituloB = incsB[0] ? String(incsB[0].titulo) : '';
+  if (tituloA !== tituloB) {
+    return tituloA.localeCompare(tituloB);
+  }
+  
+  const filaA = metaA.filaOriginal || 999999;
+  const filaB = metaB.filaOriginal || 999999;
+  return filaA - filaB;
+}
+
 // ─── Tabla de resultados ─────────────────────────────────────
 
 function renderTablaResultados(resultadosOriginal) {
   const tbody = document.getElementById('tablaBody');
   tbody.innerHTML = '';
 
-  // Ordenar por prioridad predefinida y luego por fila original para mantener coherencia
-  const resultados = [...resultadosOriginal].sort((a, b) => {
-    const metaA = encontrarMetadatos(a.claveAcceso);
-    const metaB = encontrarMetadatos(b.claveAcceso);
-    const prioA = obtenerPrioridadOrdenamiento(a, metaA);
-    const prioB = obtenerPrioridadOrdenamiento(b, metaB);
-    
-    if (prioA !== prioB) {
-      return prioA - prioB;
-    }
-    
-    const filaA = metaA.filaOriginal || 999999;
-    const filaB = metaB.filaOriginal || 999999;
-    return filaA - filaB;
-  });
+  // Ordenar por prioridad predefinida, luego sub-prioridad y luego por fila original para mantener coherencia
+  const resultados = [...resultadosOriginal].sort(compararResultados);
 
   resultados.forEach((r, i) => {
     const meta = encontrarMetadatos(r.claveAcceso);
@@ -1939,21 +2003,8 @@ async function exportarExcel() {
     return;
   }
 
-  // Ordenar resultados antes de exportar usando el mismo orden de prioridades
-  const resultadosOrdenados = [...resultadosMasivos].sort((a, b) => {
-    const metaA = encontrarMetadatos(a.claveAcceso);
-    const metaB = encontrarMetadatos(b.claveAcceso);
-    const prioA = obtenerPrioridadOrdenamiento(a, metaA);
-    const prioB = obtenerPrioridadOrdenamiento(b, metaB);
-    
-    if (prioA !== prioB) {
-      return prioA - prioB;
-    }
-    
-    const filaA = metaA.filaOriginal || 999999;
-    const filaB = metaB.filaOriginal || 999999;
-    return filaA - filaB;
-  });
+  // Ordenar resultados antes de exportar usando el mismo orden de prioridades y sub-prioridades
+  const resultadosOrdenados = [...resultadosMasivos].sort(compararResultados);
 
   // Preparar datos para la hoja principal
   const datos = resultadosOrdenados.map((r, i) => {
@@ -2053,12 +2104,13 @@ async function exportarExcel() {
                               incs.some(inc => inc.tipo === 'ERROR')
                             );
     const esIngresoAnuladoLeve = r.estadoFinal === 'INGRESO ANULADO' || r.estadoFinal === 'FISICO_NP';
+    const tieneAdvertencia = incs.some(inc => inc.tipo === 'ADVERTENCIA');
 
     let bgRGB = "FFFFFF";
     if (tieneErrorCritico) {
       bgRGB = "FDF2F2"; // Rojo suave
-    } else if (esIngresoAnuladoLeve || esRetencionQuery || (esNotaCreditoVieja && (r.estadoFinal === 'NO AUTORIZADO' || r.estadoFinal === 'RECHAZADA')) || incs.some(inc => inc.titulo === 'Proveedor Exento')) {
-      bgRGB = "FEF3C7"; // Amarillo/Naranja suave (ingreso anulado, físico NP, consulta de retención o proveedor exento)
+    } else if (esIngresoAnuladoLeve || esRetencionQuery || (esNotaCreditoVieja && (r.estadoFinal === 'NO AUTORIZADO' || r.estadoFinal === 'RECHAZADA')) || tieneAdvertencia) {
+      bgRGB = "FEF3C7"; // Amarillo/Naranja suave (ingreso anulado, físico NP, consulta de retención o proveedor exento/advertencia)
     }
 
     hojaResultados[ref].s = {
@@ -2078,7 +2130,7 @@ async function exportarExcel() {
       if (val === 'Correcto' || val.includes('Negocio Popular') || val.includes('Exterior')) {
         hojaResultados[ref].s.fill = { patternType: "solid", fgColor: { rgb: "D4EDDA" } }; // Verde suave
         hojaResultados[ref].s.font = { color: { rgb: "155724" }, bold: true, name: "Calibri", sz: 10 };
-      } else if (val.includes('ADVERTENCIA') || val.includes('[Formato') || val.includes('[Autorización 9s]') || val.includes('[Ingreso Anulado]') || val.includes('[Antigüedad') || val.includes('[Comprobante Físico') || val.includes('[Proveedor Exento]')) {
+      } else if (tieneAdvertencia || val.includes('ADVERTENCIA') || val.includes('[Formato') || val.includes('[Autorización 9s]') || val.includes('[Ingreso Anulado]') || val.includes('[Antigüedad') || val.includes('[Comprobante Físico') || val.includes('[Proveedor Exento]')) {
         hojaResultados[ref].s.fill = { patternType: "solid", fgColor: { rgb: "FFF3CD" } }; // Amarillo suave
         hojaResultados[ref].s.font = { color: { rgb: "856404" }, bold: true, name: "Calibri", sz: 10 };
       } else if (val !== '') { // Errores
@@ -2090,13 +2142,14 @@ async function exportarExcel() {
     // 3. Colorear columna M (Estado Aut Factura)
     if (col === 'M') {
       const val = String(hojaResultados[ref].v || '');
-      if ((val === 'AUTORIZADO' || val === 'SI') && !tieneErrorCritico) {
+      const esExento = incs.some(inc => inc.titulo === 'Proveedor Exento');
+      if ((val === 'AUTORIZADO' || val === 'SI') && !tieneErrorCritico && !esExento) {
         hojaResultados[ref].s.fill = { patternType: "solid", fgColor: { rgb: "D4EDDA" } }; // Verde suave
         hojaResultados[ref].s.font = { color: { rgb: "155724" }, bold: true, name: "Calibri", sz: 10 };
       } else if (val === 'SIN_AUTORIZACION_EXTERIOR') {
         hojaResultados[ref].s.fill = { patternType: "solid", fgColor: { rgb: "D1ECF1" } }; // Azul suave
         hojaResultados[ref].s.font = { color: { rgb: "0C5460" }, bold: true, name: "Calibri", sz: 10 };
-      } else if (val === 'INGRESO ANULADO' || val === 'FISICO_NP' || (esNotaCreditoVieja && (val === 'NO AUTORIZADO' || val === 'RECHAZADA'))) {
+      } else if (val === 'INGRESO ANULADO' || val === 'FISICO_NP' || (esNotaCreditoVieja && (val === 'NO AUTORIZADO' || val === 'RECHAZADA')) || esExento) {
         hojaResultados[ref].s.fill = { patternType: "solid", fgColor: { rgb: "FFE8A1" } }; // Naranja/Amarillo medio
         hojaResultados[ref].s.font = { color: { rgb: "856404" }, bold: true, name: "Calibri", sz: 10 };
       } else if (val.startsWith('ERROR_') || val === 'NO AUTORIZADO' || val === 'RECHAZADA' || val === 'ERROR_INGRESO') {
