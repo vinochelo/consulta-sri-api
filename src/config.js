@@ -35,9 +35,14 @@ const config = {
   googleDriveMasterServer: process.env.GOOGLE_DRIVE_MASTER === 'true' || process.env.GOOGLE_DRIVE_MASTER === '1',
 };
 
+const path = require('path');
+const isVercel = !!process.env.VERCEL;
+const DATA_DIR = isVercel ? '/tmp/data' : path.join(__dirname, '..', 'data');
+const CATASTROS_DIR = path.join(DATA_DIR, 'catastros');
+
 function getAmbiente(ambiente) {
   const env = ambiente || config.sriEnv;
   return AMBIENTES[env] || AMBIENTES.produccion;
 }
 
-module.exports = { config, getAmbiente, AMBIENTES };
+module.exports = { config, getAmbiente, AMBIENTES, DATA_DIR, CATASTROS_DIR };

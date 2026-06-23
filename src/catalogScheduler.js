@@ -5,7 +5,7 @@ const {
   hanPasadoDias,
   listarCatastros,
 } = require('./catalogManager');
-const { config } = require('./config');
+const { config, CATASTROS_DIR } = require('./config');
 
 // Importar Google Drive CDN
 let googleDriveCdn;
@@ -24,7 +24,7 @@ const { sincronizarMaestroCompleto } = require('./maestroManager');
 
 const INTERVALO_VERIFICACION = config.catastroActualizacionDias || 15; // días
 const INTERVALO_CHECK = 24 * 60 * 60 * 1000; // Verificar cada 24 horas (1 vez al día)
-const SCHEDULER_FILE = path.join(__dirname, '..', 'data', 'catastros', 'scheduler.json');
+const SCHEDULER_FILE = path.join(CATASTROS_DIR, 'scheduler.json');
 
 // ─── Estado del scheduler ──────────────────────────────────────────────
 
@@ -35,7 +35,7 @@ let intervaloId = null;
  * Asegura que el directorio de datos exista
  */
 async function asegurarDirectorio() {
-  const dir = path.join(__dirname, '..', 'data', 'catastros');
+  const dir = CATASTROS_DIR;
   try {
     await fs.mkdir(dir, { recursive: true });
   } catch (error) {

@@ -4,7 +4,7 @@ const path = require('path');
 const fetch = require('node-fetch');
 const XLSX = require('xlsx');
 const https = require('https');
-const { config } = require('./config');
+const { config, CATASTROS_DIR } = require('./config');
 
 // Importar Google Drive CDN si está disponible
 let googleDriveCdn;
@@ -106,8 +106,7 @@ const CATASTROS_CONFIG = {
   },
 };
 
-// Directorio para almacenar catastros
-const CATASTROS_DIR = path.join(__dirname, '..', 'data', 'catastros');
+// Directorio para almacenar catastros (importado de config)
 const METADATA_FILE = path.join(CATASTROS_DIR, 'metadata.json');
 
 // ─── Memoria Caché para Consultas Ultra-Rápidas ──────────────────────────

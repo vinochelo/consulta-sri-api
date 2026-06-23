@@ -3,7 +3,7 @@ const fsSync = require('fs');
 const path = require('path');
 const { google } = require('googleapis');
 
-const CATASTROS_DIR = path.join(__dirname, '..', 'data', 'catastros');
+const { CATASTROS_DIR, DATA_DIR } = require('./config');
 const CONFIG_FILE = path.join(CATASTROS_DIR, 'drive-sync.json');
 
 /**
@@ -19,7 +19,7 @@ const CONFIG_FILE = path.join(CATASTROS_DIR, 'drive-sync.json');
 // ─── Autenticación con OAuth2 ──────────────────────────────────────
 
 let oAuth2Client = null;
-const TOKEN_PATH = path.join(__dirname, '..', 'data', 'token.json');
+const TOKEN_PATH = path.join(DATA_DIR, 'token.json');
 
 /**
  * Obtiene el cliente de OAuth2 configurado

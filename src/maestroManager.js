@@ -1,10 +1,11 @@
 const fs = require('fs').promises;
 const fsSync = require('fs');
 const path = require('path');
+const { DATA_DIR } = require('./config');
 const { buscarRUCEnCatastro, CATASTROS_CONFIG } = require('./catalogManager');
 
-const MAESTRO_FILE = path.join(__dirname, '..', 'data', 'maestro_proveedores.json');
-const NOTIFICACIONES_FILE = path.join(__dirname, '..', 'data', 'notificaciones_cambios.json');
+const MAESTRO_FILE = path.join(DATA_DIR, 'maestro_proveedores.json');
+const NOTIFICACIONES_FILE = path.join(DATA_DIR, 'notificaciones_cambios.json');
 
 /**
  * Carga el maestro de proveedores desde el disco
