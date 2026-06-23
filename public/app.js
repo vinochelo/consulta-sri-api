@@ -1856,22 +1856,27 @@ function compararResultados(a, b) {
     return prioA - prioB;
   }
 
-  const incsA = a.inconsistencias || analizarInconsistencias(a, metaA);
-  const incsB = b.inconsistencias || analizarInconsistencias(b, metaB);
-  const subA = obtenerSubPrioridad(a, metaA, incsA);
-  const subB = obtenerSubPrioridad(b, metaB, incsB);
-
-  if (subA !== subB) {
-    return subA - subB;
+  // Si estamos en la categoría naranja/amarilla (prioridad 4)
+  if (prioA === 4) {
+    const incsA = a.inconsistencias || analizarInconsistencias(a, metaA);
+    const incsB = b.inconsistencias || analizarInconsistencias(b, metaB);
+    
+    const esExentoA = incsA.some(inc => inc.titulo === 'Proveedor Exento');
+    const esExentoB = incsB.some(inc => inc.titulo === 'Proveedor Exento');
+    
+    // Proveedor Exento siempre al inicio de la prioridad 4
+    if (esExentoA && !esExentoB) return -1;
+    if (!esExentoA && esExentoB) return 1;
+    
+    // Si ambos son exentos o ninguno lo es, ordenar por la cadena de la celda de validaciones/alertas
+    const textoA = incsA.map(inc => `[${inc.titulo}] ${inc.mensaje}`).join('; ') || 'Correcto';
+    const textoB = incsB.map(inc => `[${inc.titulo}] ${inc.mensaje}`).join('; ') || 'Correcto';
+    
+    if (textoA !== textoB) {
+      return textoA.localeCompare(textoB);
+    }
   }
 
-  // Agrupar por el título de la primera inconsistencia para mantener en secuencia el mismo tipo de error
-  const tituloA = incsA[0] ? String(incsA[0].titulo) : '';
-  const tituloB = incsB[0] ? String(incsB[0].titulo) : '';
-  if (tituloA !== tituloB) {
-    return tituloA.localeCompare(tituloB);
-  }
-  
   const filaA = metaA.filaOriginal || 999999;
   const filaB = metaB.filaOriginal || 999999;
   return filaA - filaB;
