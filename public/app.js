@@ -2977,13 +2977,13 @@ async function cargarNotificaciones() {
         badge.style.display = 'none';
       }
 
-      if (data.notificaciones.length === 0) {
+      if (nuevas.length === 0) {
         list.innerHTML = '<p class="empty-notif">No hay cambios recientes</p>';
         return;
       }
 
-      list.innerHTML = data.notificaciones.reverse().map(n => `
-        <div class="notification-item ${n.leida ? '' : 'unread'}">
+      list.innerHTML = nuevas.reverse().map(n => `
+        <div class="notification-item unread">
           <div class="notification-item-header">
             <span class="notification-ruc">${n.ruc}</span>
             <span class="notification-date">${new Date(n.fecha).toLocaleDateString()}</span>

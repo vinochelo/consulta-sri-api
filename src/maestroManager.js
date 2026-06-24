@@ -59,25 +59,85 @@ async function guardarNotificaciones(notificaciones) {
 /**
  * Obtiene el resumen fiscal de un RUC cruzando todos los catastros
  */
-async function obtenerResumenFiscal(ruc) {
+async function obtenerResumenFiscal(ruc, estadosAnteriores = []) {
   const resultados = await buscarRUCEnCatastro(ruc, 'todos');
+  
+  // Si los catastros principales no están disponibles, no podemos saber el estado real,
+  // así que para evitar falsos negativos (volver a todos "Régimen General"), omitimos.
+  const totalCatastros = Object.keys(resultados).length;
+  const noDisponibles = Object.values(resultados).filter(r => !r.disponible).length;
+  if (totalCatastros > 0 && noDisponibles === totalCatastros) {
+    return null;
+  }
+
   const estados = [];
   
-  // Extraer etiquetas relevantes
-  if (resultados.grandes_contribuyentes?.encontrado) estados.push('Grande Contribuyente');
-  if (resultados.agentes_retencion?.encontrado) estados.push('Agente de Retención');
-  if (resultados.exportadores_bienes?.encontrado) estados.push('Exportador Bienes');
-  if (resultados.exportadores_servicios?.encontrado) estados.push('Exportador Servicios');
-  
-  // RIMPE
-  if (resultados.rimpe_emprendedores?.encontrado) estados.push('RIMPE Emprendedor');
-  if (resultados.rimpe_negocios_populares?.encontrado) estados.push('RIMPE Negocio Popular');
-  
-  if (resultados.contribuyentes_especiales?.encontrado) estados.push('Contribuyente Especial');
+  // Grande Contribuyente
+  if (resultados.grandes_contribuyentes?.disponible) {
+    if (resultados.grandes_contribuyentes.encontrado) estados.push('Grande Contribuyente');
+  } else if (estadosAnteriores.includes('Grande Contribuyente')) {
+    estados.push('Grande Contribuyente');
+  }
+
+  // Agente de Retención
+  if (resultados.agentes_retencion?.disponible) {
+    if (resultados.agentes_retencion.encontrado) estados.push('Agente de Retención');
+  } else if (estadosAnteriores.includes('Agente de Retención')) {
+    estados.push('Agente de Retención');
+  }
+
+  // Exportador Bienes
+  if (resultados.exportadores_bienes?.disponible) {
+    if (resultados.exportadores_bienes.encontrado) estados.push('Exportador Bienes');
+  } else if (estadosAnteriores.includes('Exportador Bienes')) {
+    estados.push('Exportador Bienes');
+  }
+
+  // Exportador Servicios
+  if (resultados.exportadores_servicios?.disponible) {
+    if (resultados.exportadores_servicios.encontrado) estados.push('Exportador Servicios');
+  } else if (estadosAnteriores.includes('Exportador Servicios')) {
+    estados.push('Exportador Servicios');
+  }
+
+  // RIMPE Emprendedor
+  if (resultados.rimpe_emprendedores?.disponible) {
+    if (resultados.rimpe_emprendedores.encontrado) estados.push('RIMPE Emprendedor');
+  } else if (estadosAnteriores.includes('RIMPE Emprendedor')) {
+    estados.push('RIMPE Emprendedor');
+  }
+
+  // RIMPE Negocio Popular
+  if (resultados.rimpe_negocios_populares?.disponible) {
+    if (resultados.rimpe_negocios_populares.encontrado) estados.push('RIMPE Negocio Popular');
+  } else if (estadosAnteriores.includes('RIMPE Negocio Popular')) {
+    estados.push('RIMPE Negocio Popular');
+  }
+
+  // Contribuyente Especial
+  if (resultados.contribuyentes_especiales?.disponible) {
+    if (resultados.contribuyentes_especiales.encontrado) estados.push('Contribuyente Especial');
+  } else if (estadosAnteriores.includes('Contribuyente Especial')) {
+    estados.push('Contribuyente Especial');
+  }
+
+  // Buscar nombre de forma robusta en los catastros donde se haya encontrado
+  let nombre = 'Nombre no encontrado';
+  for (const r of Object.values(resultados)) {
+    if (r.datos) {
+      const val = r.datos.nombre || r.datos.razonSocial || r.datos.razon_social || 
+                  r.datos['Razón Social'] || r.datos['RAZON SOCIAL'] || 
+                  r.datos['Nombre'] || r.datos['NOMBRE'];
+      if (val && val !== 'Nombre no encontrado') {
+        nombre = String(val).trim();
+        break;
+      }
+    }
+  }
 
   return {
     ruc,
-    nombre: Object.values(resultados).find(r => r.datos)?.datos?.nombre || 'Nombre no encontrado',
+    nombre,
     estados: estados.length > 0 ? estados : ['Régimen General'],
     ultimaVerificacion: new Date().toISOString(),
     detalleCompleto: resultados
@@ -88,7 +148,7 @@ async function obtenerResumenFiscal(ruc) {
  * Sincroniza todo el maestro contra los catastros del SRI
  */
 async function sincronizarMaestroCompleto() {
-  console.log('[MAESTRO] 🔄 Iniciando sincronización automática del Maestro de Proveedores...');
+  console.log('[MAESTRO] 🔄 Sincronizando Maestro de Proveedores...');
   const maestro = await cargarMaestro();
   const notificaciones = await cargarNotificaciones();
   const rucs = Object.keys(maestro);
@@ -96,8 +156,20 @@ async function sincronizarMaestroCompleto() {
 
   for (const ruc of rucs) {
     const estadoAnterior = maestro[ruc].estados.join(', ');
-    const nuevoResumen = await obtenerResumenFiscal(ruc);
+    const nuevoResumen = await obtenerResumenFiscal(ruc, maestro[ruc].estados);
+    if (!nuevoResumen) {
+      console.log(`[MAESTRO] ⚠️ Omitiendo sincronización para RUC ${ruc} por indisponibilidad de catastros.`);
+      continue;
+    }
     const estadoNuevo = nuevoResumen.estados.join(', ');
+
+    // Preservar nombre anterior si el nuevo no tiene un nombre válido
+    const nombreAnterior = maestro[ruc].nombre;
+    const nombreFinal = (nuevoResumen.nombre && nuevoResumen.nombre !== 'Nombre no encontrado')
+      ? nuevoResumen.nombre
+      : (nombreAnterior && nombreAnterior !== 'Nombre no encontrado')
+        ? nombreAnterior
+        : 'Nombre no encontrado';
 
     if (estadoAnterior !== estadoNuevo) {
       console.log(`[MAESTRO] 🔔 CAMBIO DETECTADO: ${ruc} | ${estadoAnterior} -> ${estadoNuevo}`);
@@ -105,7 +177,7 @@ async function sincronizarMaestroCompleto() {
       notificaciones.push({
         id: Date.now() + Math.random().toString(36).substr(2, 5),
         ruc,
-        nombre: nuevoResumen.nombre,
+        nombre: nombreFinal,
         tipo: 'cambio_estado',
         anterior: estadoAnterior,
         nuevo: estadoNuevo,
@@ -120,6 +192,7 @@ async function sincronizarMaestroCompleto() {
     maestro[ruc] = {
       ...maestro[ruc],
       ...nuevoResumen,
+      nombre: nombreFinal,
       ultimoEstado: estadoNuevo
     };
   }
@@ -139,13 +212,34 @@ async function agregarAlMaestro(ruc, nombre = null) {
   
   if (maestro[ruc]) {
     // Si ya existe, solo actualizar datos fiscales
-    const resumen = await obtenerResumenFiscal(ruc);
-    maestro[ruc] = { ...maestro[ruc], ...resumen };
+    const resumen = await obtenerResumenFiscal(ruc, maestro[ruc].estados);
+    if (!resumen) return maestro[ruc];
+    const nombreFinal = (resumen.nombre && resumen.nombre !== 'Nombre no encontrado')
+      ? resumen.nombre
+      : (maestro[ruc].nombre && maestro[ruc].nombre !== 'Nombre no encontrado')
+        ? maestro[ruc].nombre
+        : (nombre || 'Nombre no encontrado');
+    maestro[ruc] = { 
+      ...maestro[ruc], 
+      ...resumen,
+      nombre: nombreFinal
+    };
   } else {
     console.log(`[MAESTRO] ✨ Añadiendo nuevo proveedor: ${ruc}`);
     const resumen = await obtenerResumenFiscal(ruc);
-    if (nombre) resumen.nombre = nombre;
-    maestro[ruc] = resumen;
+    if (resumen) {
+      if (nombre && resumen.nombre === 'Nombre no encontrado') {
+        resumen.nombre = nombre;
+      }
+      maestro[ruc] = resumen;
+    } else {
+      maestro[ruc] = {
+        ruc,
+        nombre: nombre || 'Nombre no encontrado',
+        estados: ['Pendiente sincronizar'],
+        ultimaVerificacion: new Date().toISOString()
+      };
+    }
   }
   
   await guardarMaestro(maestro);
